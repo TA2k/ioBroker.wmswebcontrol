@@ -16,7 +16,9 @@
     "url": "https://github.com/TA2k/ioBroker.wmswebcontrol"
   },
   "dependencies": {
-    "@iobroker/adapter-core": "^2.4.0"
+    "@iobroker/adapter-core": "^2.4.0",
+    "axios-cookiejar-support": "^1.0.1",
+    "tough-cookie": "^4.0.0"
   },
   "devDependencies": {
     "@iobroker/testing": "^2.4.4",
