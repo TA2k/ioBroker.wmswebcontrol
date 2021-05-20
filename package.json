@@ -18,7 +18,8 @@
   "dependencies": {
     "@iobroker/adapter-core": "^2.4.0",
     "axios-cookiejar-support": "^1.0.1",
-    "tough-cookie": "^4.0.0"
+    "tough-cookie": "^4.0.0",
+    "axios": "^0.21.1"
   },
   "devDependencies": {
     "@iobroker/testing": "^2.4.4",
