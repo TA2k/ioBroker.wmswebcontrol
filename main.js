@@ -170,7 +170,7 @@ class Wmswebcontrol extends utils.Adapter {
                                         resolve();
                                     })
                                     .catch((error) => {
-                                        this.log.error(error.config.url);
+                                        error.config && this.log.error(error.config.url);
                                         this.log.error(error);
                                         this.log.error("code: " + code);
                                         this.log.error("code_verifier: " + code_verifier);
@@ -179,7 +179,7 @@ class Wmswebcontrol extends utils.Adapter {
                             });
                     })
                     .catch((error) => {
-                        error.config.url && this.log.error(error.config.url);
+                        error.config && this.log.error(error.config.url);
                         this.log.error(error);
                         reject();
                     });
@@ -214,7 +214,7 @@ class Wmswebcontrol extends utils.Adapter {
                     resolve();
                 })
                 .catch((error) => {
-                    error.config.url && this.log.error(error.config.url);
+                    error.config && this.log.error(error.config.url);
                     this.log.error(error);
                     reject();
                 });
@@ -264,7 +264,7 @@ class Wmswebcontrol extends utils.Adapter {
                                 resolve();
                             })
                             .catch((error) => {
-                                error.config.url && this.log.error(error.config.url);
+                                error.config && this.log.error(error.config.url);
                                 this.log.error(error);
                                 reject();
                             });
@@ -272,7 +272,7 @@ class Wmswebcontrol extends utils.Adapter {
                     resolve();
                 })
                 .catch((error) => {
-                    error.config.url && this.log.error(error.config.url);
+                    error.config && this.log.error(error.config.url);
                     this.log.error(error);
                     reject();
                 });
@@ -392,7 +392,7 @@ class Wmswebcontrol extends utils.Adapter {
                     resolve(response.data);
                 })
                 .catch((error) => {
-                    error.config.url && this.log.error(error.config.url);
+                    error.config && this.log.error(error.config.url);
                     this.log.error(error);
                     reject();
                 });
