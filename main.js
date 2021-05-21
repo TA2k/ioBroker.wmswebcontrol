@@ -309,7 +309,8 @@ class Wmswebcontrol extends utils.Adapter {
                         const elementName = Buffer.from(elementArray[1], "hex")
                             .toString("utf-8")
                             .replace(/\u0000/g, "")
-                            .replace(/ /g, "");
+                            .replace(/ /g, "")
+                            .toString();
                         if (elementSerial != 0) {
                             this.deviceList.push({ id: elementSerial, name: elementName });
                             await this.setObjectNotExistsAsync(elementName, {
