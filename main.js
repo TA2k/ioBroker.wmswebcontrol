@@ -62,7 +62,9 @@ class Wmswebcontrol extends utils.Adapter {
                         this.getDeviceList()
                             .then(() => {
                                 this.appUpdateInterval = setInterval(() => {
-                                    this.getDeviceStatus();
+                                    this.getDeviceStatus().catch(() => {
+                                        this.log.error("Get device status failed");
+                                    });
                                 }, this.config.interval * 60 * 1000);
                             })
                             .catch(() => {
@@ -82,16 +84,17 @@ class Wmswebcontrol extends utils.Adapter {
     login() {
         return new Promise(async (resolve, reject) => {
             const [code_verifier, codeChallenge] = this.getCodeChallenge();
-
+            const nonce = this.randomString(50);
+            const state = this.randomString(50);
             axios({
                 method: "get",
                 jar: this.cookieJar,
                 withCredentials: true,
                 url:
                     "https://auth.warema.de/v1/connect/authorize?redirect_uri=wcpmobileapp%3A%2F%2Fpages%2Fredirect&client_id=devicecloud_wcpmobileapp&response_type=code&grant_type=authorization_code&nonce=" +
-                    this.randomString(50) +
+                    nonce +
                     "&state=" +
-                    this.randomString(50) +
+                    state +
                     "&scope=openid%20profile%20offline_access%20devicecloud_devicecloudservice_devices_get%20devicecloud_devicecloudservice_devices_register%20devicecloud_devicecloudservice_devices_unregister%20devicecloud_devicecloudservice_commoncommand_action%20devicecloud_devicecloudservice_commoncommand_discovery%20devicecloud_devicecloudservice_commoncommand_ping%20devicecloud_devicecloudservice_commoncommand_scene%20devicecloud_devicecloudservice_commoncommand_status%20devicecloud_devicecloudservice_communication_systemnative&code_challenge=" +
                     codeChallenge +
                     "&code_challenge_method=S256",
@@ -100,90 +103,101 @@ class Wmswebcontrol extends utils.Adapter {
                     accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
                     "accept-language": "de-de",
                 },
-            }).then((response) => {
-                const tokenA = response.data.split('RequestVerificationToken" type="hidden" value="');
-                const token = tokenA[1].split('" />')[0];
-                axios({
-                    method: "post",
-                    jar: this.cookieJar,
-                    withCredentials: true,
-                    url: "https://auth.warema.de" + response.request.path,
-                    headers: {
-                        accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-                        "content-type": "application/x-www-form-urlencoded",
-                        "accept-language": "de-de",
-                        "user-agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 12_5_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/12.1.2 Mobile/15E148 Safari/604.1",
-                    },
-                    data:
-                        "Input.Username=" +
-                        this.config.user +
-                        "&Input.Password=" +
-                        this.config.password +
-                        "&Input.RememberMe=true&button=login&__RequestVerificationToken=" +
-                        token +
-                        "&Input.RememberMe=false",
-                })
-                    .then((response) => {
-                        const url = response.data.split("0;url=")[1].split('" data-url')[0].replace(/&amp;/g, "&");
-                        axios({
-                            method: "get",
-                            jar: this.cookieJar,
-                            withCredentials: true,
-                            url: "https://auth.warema.de" + url,
-                            headers: {
-                                accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-                                "accept-language": "de-de",
-                                "user-agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 12_5_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/12.1.2 Mobile/15E148 Safari/604.1",
-                            },
-                        })
-                            .then((response) => {
-                                reject();
-                            })
-                            .catch((error) => {
-                                const code = error.config.url.split("code=")[1].split("&scope")[0];
-                                this.log.debug("code: " + code);
-                                this.log.debug("code_verifier: " + code_verifier);
-                                axios({
-                                    method: "post",
-                                    jar: this.cookieJar,
-                                    withCredentials: true,
-                                    url: "https://auth.warema.de/v1/connect/token",
-                                    headers: {
-                                        accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-                                        "content-type": "application/x-www-form-urlencoded",
-                                        "accept-language": "de-de",
-                                        "user-agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 12_5_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/12.1.2 Mobile/15E148 Safari/604.1",
-                                    },
-                                    data:
-                                        "client_id=devicecloud_wcpmobileapp&client_secret=nosecret&code=" +
-                                        code +
-                                        "&code_verifier=" +
-                                        code_verifier +
-                                        "&grant_type=authorization_code&redirect_uri=wcpmobileapp%3A%2F%2Fpages%2Fredirect",
-                                })
-                                    .then((response) => {
-                                        this.aToken = response.data.access_token;
-                                        this.rToken = response.data.refresh_token;
-                                        this.refreshTokenInterval = setInterval(() => {
-                                            this.refreshToken().catch(() => {});
-                                        }, 15 * 60 * 1000); // 15min
-                                        resolve();
-                                    })
-                                    .catch((error) => {
-                                        error.config && this.log.error(error.config.url);
-                                        this.log.error(error);
-                                        this.log.error("code: " + code);
-                                        this.log.error("code_verifier: " + code_verifier);
-                                        reject();
-                                    });
-                            });
+            })
+                .then((response) => {
+                    const tokenA = response.data.split('RequestVerificationToken" type="hidden" value="');
+                    const token = tokenA[1].split('" />')[0];
+                    axios({
+                        method: "post",
+                        jar: this.cookieJar,
+                        withCredentials: true,
+                        url: "https://auth.warema.de" + response.request.path,
+                        headers: {
+                            accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+                            "content-type": "application/x-www-form-urlencoded",
+                            "accept-language": "de-de",
+                            "user-agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 12_5_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/12.1.2 Mobile/15E148 Safari/604.1",
+                        },
+                        data:
+                            "Input.Username=" +
+                            this.config.user +
+                            "&Input.Password=" +
+                            this.config.password +
+                            "&Input.RememberMe=true&button=login&__RequestVerificationToken=" +
+                            token +
+                            "&Input.RememberMe=false",
                     })
-                    .catch((error) => {
-                        error.config && this.log.error(error.config.url);
-                        this.log.error(error);
-                        reject();
-                    });
-            });
+                        .then((response) => {
+                            const url = response.data.split("0;url=")[1].split('" data-url')[0].replace(/&amp;/g, "&");
+                            axios({
+                                method: "get",
+                                jar: this.cookieJar,
+                                withCredentials: true,
+                                url: "https://auth.warema.de" + url,
+                                headers: {
+                                    accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+                                    "accept-language": "de-de",
+                                    "user-agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 12_5_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/12.1.2 Mobile/15E148 Safari/604.1",
+                                },
+                            })
+                                .then((response) => {
+                                    reject();
+                                })
+                                .catch((error) => {
+                                    const code = error.config.url.split("code=")[1].split("&scope")[0];
+                                    this.log.debug("code: " + code);
+                                    this.log.debug("code_verifier: " + code_verifier);
+                                    this.log.debug("codeChallenge: " + codeChallenge);
+                                    this.log.debug("state: " + state);
+                                    this.log.debug("nonce: " + nonce);
+                                    axios({
+                                        method: "post",
+                                        jar: this.cookieJar,
+                                        withCredentials: true,
+                                        url: "https://auth.warema.de/v1/connect/token",
+                                        headers: {
+                                            accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+                                            "content-type": "application/x-www-form-urlencoded",
+                                            "accept-language": "de-de",
+                                            "user-agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 12_5_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/12.1.2 Mobile/15E148 Safari/604.1",
+                                        },
+                                        data:
+                                            "client_id=devicecloud_wcpmobileapp&client_secret=nosecret&code=" +
+                                            code +
+                                            "&code_verifier=" +
+                                            code_verifier +
+                                            "&grant_type=authorization_code&redirect_uri=wcpmobileapp%3A%2F%2Fpages%2Fredirect",
+                                    })
+                                        .then((response) => {
+                                            this.aToken = response.data.access_token;
+                                            this.rToken = response.data.refresh_token;
+                                            this.refreshTokenInterval = setInterval(() => {
+                                                this.refreshToken().catch(() => {});
+                                            }, 15 * 60 * 1000); // 15min
+                                            resolve();
+                                        })
+                                        .catch((error) => {
+                                            if (error.response.status === 400) {
+                                                this.log.error("Login was not successful restart adapter");
+                                                this.restart();
+                                            }
+                                            error.config && this.log.error(error.config.url);
+                                            this.log.error(error);
+
+                                            reject();
+                                        });
+                                });
+                        })
+                        .catch((error) => {
+                            error.config && this.log.error(error.config.url);
+                            this.log.error(error);
+                            reject();
+                        });
+                })
+                .catch((error) => {
+                    this.log.error(error);
+                    this.log.error("First Login step failed.");
+                });
         });
     }
     refreshToken() {
@@ -312,7 +326,9 @@ class Wmswebcontrol extends utils.Adapter {
                     });
                     resolve();
                     this.log.debug(JSON.stringify(this.deviceList));
-                    this.getDeviceStatus();
+                    this.getDeviceStatus().catch(() => {
+                        this.log.error("Get device status failed");
+                    });
                 })
                 .catch(() => {
                     this.log.error("Get DevicesList failed");
@@ -362,7 +378,9 @@ class Wmswebcontrol extends utils.Adapter {
                     this.log.debug(JSON.stringify(result.response));
                     // this.extractKeys(this, device.name, result.response, true);
                     this.waitTimeout = setTimeout(() => {
-                        this.getDeviceStatus();
+                        this.getDeviceStatus().catch(() => {
+                            this.log.error("Get device status failed");
+                        });
                     }, 5000);
                     resolve();
                 })
@@ -392,6 +410,20 @@ class Wmswebcontrol extends utils.Adapter {
                     resolve(response.data);
                 })
                 .catch((error) => {
+                    if (error.response.status === 401) {
+                        this.refreshToken()
+                            .then(() => {
+                                this.log.info("Retry message in 1min");
+                                this.waitTimeout = setTimeout(() => {
+                                    this.genericPostMessage(action, parameter).catch(() => {
+                                        this.log.error("Failed to post after refresh token");
+                                    });
+                                }, 1 * 60 * 1000);
+                            })
+                            .catch(() => {
+                                this.log.error("Failed to refresh token");
+                            });
+                    }
                     error.config && this.log.error(error.config.url);
                     this.log.error(error);
                     reject();
