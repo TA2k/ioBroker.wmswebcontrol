@@ -308,7 +308,8 @@ class Wmswebcontrol extends utils.Adapter {
                         const elementSerial = Buffer.from(elementArray[0].substring(0, 8), "hex").readInt32LE();
                         const elementName = Buffer.from(elementArray[1], "hex")
                             .toString("utf-8")
-                            .replace(/\u0000/g, "");
+                            .replace(/\u0000/g, "")
+                            .replace(/ /g, "");
                         if (elementSerial != 0) {
                             this.deviceList.push({ id: elementSerial, name: elementName });
                             await this.setObjectNotExistsAsync(elementName, {
@@ -378,9 +379,17 @@ class Wmswebcontrol extends utils.Adapter {
                     this.log.debug(JSON.stringify(result.response));
                     // this.extractKeys(this, device.name, result.response, true);
                     this.waitTimeout = setTimeout(() => {
-                        this.getDeviceStatus().catch(() => {
-                            this.log.error("Get device status failed");
-                        });
+                        this.getDeviceStatus()
+                            .then(() => {
+                                this.waitTimeout = setTimeout(() => {
+                                    this.getDeviceStatus().catch(() => {
+                                        this.log.error("Get device status failed");
+                                    });
+                                }, 15000);
+                            })
+                            .catch(() => {
+                                this.log.error("Get device status failed");
+                            });
                     }, 5000);
                     resolve();
                 })
