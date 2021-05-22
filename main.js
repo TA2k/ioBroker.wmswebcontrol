@@ -455,7 +455,16 @@ class Wmswebcontrol extends utils.Adapter {
         }
         return result;
     }
+    decimalToHex(d, padding) {
+        let hex = Number(d).toString(16);
+        padding = typeof padding === "undefined" || padding === null ? (padding = 2) : padding;
 
+        while (hex.length < padding) {
+            hex = "0" + hex;
+        }
+
+        return hex;
+    }
     /**
      * Is called when adapter shuts down - callback has to be called under any circumstances!
      * @param {() => void} callback
@@ -477,14 +486,53 @@ class Wmswebcontrol extends utils.Adapter {
      * @param {ioBroker.State | null | undefined} state
      */
     async onStateChange(id, state) {
-        if (state && !state.ack) {
-            if (id.indexOf(".setting") !== -1) {
-                const idArray = id.split(".");
-                const pre = idArray.slice(0, -1).join(".");
-                const serialNumber = await this.getStateAsync(pre + ".serialNumber");
-                this.setDeviceStatus({ id: serialNumber.val, name: idArray[2] }, idArray[idArray.length - 1], state.val).catch(() => {
-                    this.log.error("set status failed");
-                });
+        if (state) {
+            const idArray = id.split(".");
+            const pre = idArray.slice(0, -1).join(".");
+            if (!state.ack) {
+                if (id.indexOf(".setting") !== -1 && id.indexOf("Convert") === -1) {
+                    const serialNumber = await this.getStateAsync(pre + ".serialNumber");
+                    this.setDeviceStatus({ id: serialNumber.val, name: idArray[2] }, idArray[idArray.length - 1], state.val).catch(() => {
+                        this.log.error("set status failed");
+                    });
+                }
+                if (id.indexOf(".setting") !== -1 && id.indexOf("Convert") !== -1) {
+                    const trimmedID = id.replace("Convert", "");
+                    const index = trimmedID.slice(-1);
+                    const parameterState = await this.getStateAsync(pre + ".parameterType" + index);
+                    let value = state.val;
+                    if (parameterState.val === 55) {
+                        value = this.decimalToHex(state.val / 2);
+                    }
+                    if (parameterState.val === 12) {
+                        value = state.val * 2;
+                    }
+                    this.setState(trimmedID, value, false);
+                }
+            } else {
+                if (id.indexOf(".setting") !== -1 && id.indexOf("Convert") === -1) {
+                    await this.setObjectNotExistsAsync(id + "Convert", {
+                        type: "state",
+                        common: {
+                            name: "Settings converted in readable value",
+                            role: "indicator",
+                            type: "mixed",
+                            write: true,
+                            read: true,
+                        },
+                        native: {},
+                    });
+                    const index = id.slice(-1);
+                    const parameterState = await this.getStateAsync(pre + ".parameterType" + index);
+                    let value = state.val;
+                    if (parameterState.val === 55) {
+                        value = parseInt(state.val, 16) * 2;
+                    }
+                    if (parameterState.val === 12) {
+                        value = state.val / 2;
+                    }
+                    this.setState(id + "Convert", value, true);
+                }
             }
         } else {
             // The state was deleted
