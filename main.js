@@ -331,8 +331,9 @@ class Wmswebcontrol extends utils.Adapter {
                         this.log.error("Get device status failed");
                     });
                 })
-                .catch(() => {
+                .catch((error) => {
                     this.log.error("Get DevicesList failed");
+                    this.log.error(error);
                     reject();
                 });
         });
@@ -420,11 +421,15 @@ class Wmswebcontrol extends utils.Adapter {
                 data: data,
             })
                 .then((response) => {
-                    this.log.debug(response.data);
                     resolve(response.data);
+                    this.log.debug(response.data);
+                    try {
+                        this.log.debug(JSON.parse(response.data));
+                    } catch (error) {}
                 })
                 .catch((error) => {
                     if (error.response.status === 401) {
+                        this.login.debug("error 401");
                         this.refreshToken()
                             .then(() => {
                                 this.log.info("Retry message in 1min");
