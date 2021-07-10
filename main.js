@@ -401,11 +401,15 @@ class Wmswebcontrol extends utils.Adapter {
     }
     genericPostMessage(action, parameter) {
         return new Promise(async (resolve, reject) => {
+            const url = "https://devicecloudservice.prod.devicecloud.warema.de/api/v1.0/communication/" + this.wcType + "/" + this.webControlId + "/postMessage/";
+            const data = JSON.stringify({ action: action, parameters: parameter, changeIds: [] });
+            this.log.debug(url);
+            this.log.debug(data);
             axios({
                 method: "post",
                 jar: this.cookieJar,
                 withCredentials: true,
-                url: "https://devicecloudservice.prod.devicecloud.warema.de/api/v1.0/communication/" + this.wcType + "/" + this.webControlId + "/postMessage/",
+                url: url,
                 headers: {
                     accept: "*/*",
                     "content-type": "application/json",
@@ -413,9 +417,10 @@ class Wmswebcontrol extends utils.Adapter {
                     "accept-language": "de-DE;q=1",
                     authorization: "Bearer " + this.aToken,
                 },
-                data: JSON.stringify({ action: action, parameters: parameter, changeIds: [] }),
+                data: data,
             })
                 .then((response) => {
+                    this.log.debug(response.data);
                     resolve(response.data);
                 })
                 .catch((error) => {
@@ -435,6 +440,7 @@ class Wmswebcontrol extends utils.Adapter {
                     }
                     error.config && this.log.error(error.config.url);
                     this.log.error(error);
+                    error.response && this.log.error(JSON.stringify(error.response.data));
                     reject();
                 });
         });
