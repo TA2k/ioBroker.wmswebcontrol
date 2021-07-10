@@ -422,7 +422,8 @@ class Wmswebcontrol extends utils.Adapter {
             })
                 .then((response) => {
                     resolve(response.data);
-                    response.config && this.log.debug(response.config.url);
+
+                    response.config && this.log.debug("Response:" + response.config.url);
                     this.log.debug(JSON.stringify(response.data));
                 })
                 .catch((error) => {
