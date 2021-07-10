@@ -451,7 +451,7 @@ class Wmswebcontrol extends utils.Adapter {
     getCodeChallenge() {
         this.code_verifier = this.randomString(64);
         const base64Digest = crypto.createHash("sha256").update(this.code_verifier).digest("base64");
-        const code_challenge = base64Digest.replace("+", "-").replace("/", "_").replace(/=+$/, "");
+        const code_challenge = base64Digest.replace(/\+/g, "-").replace(/\//g, "_").replace(/=/g, "");
         return [this.code_verifier, code_challenge];
     }
 
