@@ -422,11 +422,8 @@ class Wmswebcontrol extends utils.Adapter {
             })
                 .then((response) => {
                     resolve(response.data);
-                    this.log.debug(response.data);
-                    try {
-                        this.log.debug(JSON.parse(response.headers));
-                        this.log.debug(JSON.parse(response.data));
-                    } catch (error) {}
+                    response.config && this.log.debug(response.config.url);
+                    this.log.debug(JSON.stringify(response.data));
                 })
                 .catch((error) => {
                     if (error.response.status === 401) {
