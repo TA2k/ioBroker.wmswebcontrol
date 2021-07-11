@@ -297,7 +297,7 @@ class Wmswebcontrol extends utils.Adapter {
             this.genericPostMessage("mb8Read", {
                 address: 0,
                 block: 42,
-                eui: 1397220,
+                eui: parseInt(this.webControlId),
                 length: 12800,
             })
                 .then((result) => {
