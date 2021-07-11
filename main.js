@@ -312,7 +312,7 @@ class Wmswebcontrol extends utils.Adapter {
                         const elementArray = element.split("ffffffffffff");
                         const elementSerial = Buffer.from(elementArray[0].substring(0, 8), "hex").readInt32LE();
                         const elementName = Buffer.from(elementArray[1], "hex")
-                            .toString("utf-8")
+                            .toString("latin1")
                             .replace(/\u0000/g, "")
                             .replace(/ /g, "");
                         if (elementSerial != 0) {
