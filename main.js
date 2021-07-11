@@ -303,7 +303,7 @@ class Wmswebcontrol extends utils.Adapter {
                 .then((result) => {
                     result = Buffer.from(result.response.data, "base64");
                     const deviceArray = result.toString("hex").match(/(.{1,128})/g);
-                    if (!deviceArray.forEach) {
+                    if (!deviceArray) {
                         this.log.error("No devices found");
                         reject();
                         return;
