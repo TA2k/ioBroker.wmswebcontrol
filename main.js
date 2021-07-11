@@ -303,6 +303,11 @@ class Wmswebcontrol extends utils.Adapter {
                 .then((result) => {
                     result = Buffer.from(result.response.data, "base64");
                     const deviceArray = result.toString("hex").match(/(.{1,128})/g);
+                    if (!deviceArray.forEach) {
+                        this.log.error("No devices found");
+                        reject();
+                        return;
+                    }
                     deviceArray.forEach(async (element) => {
                         const elementArray = element.split("ffffffffffff");
                         const elementSerial = Buffer.from(elementArray[0].substring(0, 8), "hex").readInt32LE();
