@@ -170,7 +170,7 @@ class Wmswebcontrol extends utils.Adapter {
                                             "&grant_type=authorization_code&redirect_uri=wcpmobileapp%3A%2F%2Fpages%2Fredirect",
                                     })
                                         .then((response) => {
-                                            this.log.debug(response.data)
+                                            this.log.debug(response.data);
                                             this.aToken = response.data.access_token;
                                             this.rToken = response.data.refresh_token;
                                             this.refreshTokenInterval = setInterval(() => {
@@ -305,7 +305,7 @@ class Wmswebcontrol extends utils.Adapter {
                 length: 12800,
             })
                 .then((result) => {
-                    this.log.debug(JSON.stringify(result.response)
+                    this.log.debug(JSON.stringify(result.response));
                     result = Buffer.from(result.response.data, "base64");
                     const deviceArray = result.toString("hex").match(/(.{1,128})/g);
                     if (!deviceArray) {
