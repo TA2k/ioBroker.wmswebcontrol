@@ -170,6 +170,7 @@ class Wmswebcontrol extends utils.Adapter {
                                             "&grant_type=authorization_code&redirect_uri=wcpmobileapp%3A%2F%2Fpages%2Fredirect",
                                     })
                                         .then((response) => {
+                                            this.log.debug(response.data)
                                             this.aToken = response.data.access_token;
                                             this.rToken = response.data.refresh_token;
                                             this.refreshTokenInterval = setInterval(() => {
@@ -438,7 +439,7 @@ class Wmswebcontrol extends utils.Adapter {
                 })
                 .catch((error) => {
                     if (error.response.status === 401) {
-                        this.login.debug("error 401");
+                        this.log.debug("error 401");
                         this.refreshToken()
                             .then(() => {
                                 this.log.info("Retry message in 1min");
