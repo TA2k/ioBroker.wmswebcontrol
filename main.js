@@ -170,7 +170,7 @@ class Wmswebcontrol extends utils.Adapter {
                                             "&grant_type=authorization_code&redirect_uri=wcpmobileapp%3A%2F%2Fpages%2Fredirect",
                                     })
                                         .then((response) => {
-                                            this.log.debug(response.data);
+                                            this.log.debug(JSON.stringify(response.data));
                                             this.aToken = response.data.access_token;
                                             this.rToken = response.data.refresh_token;
                                             this.refreshTokenInterval = setInterval(() => {
@@ -314,12 +314,20 @@ class Wmswebcontrol extends utils.Adapter {
                         return;
                     }
                     deviceArray.forEach(async (element) => {
-                        const elementArray = element.split("ffffffffffff");
+                        let elementArray = element.split("ffffffffffff");
+                        if (!elementArray[1]) {
+                            elementArray = element.split("ffffff");
+                        }
+                        if (!elementArray[1]) {
+                            this.log.debug("Skip: " + element);
+                            return;
+                        }
                         const elementSerial = Buffer.from(elementArray[0].substring(0, 8), "hex").readInt32LE();
                         const elementName = Buffer.from(elementArray[1], "hex")
                             .toString("latin1")
                             .replace(/\u0000/g, "")
-                            .replace(/ /g, "");
+                            .replace(/ /g, "")
+                            .replace(/\./g, "");
                         if (elementSerial != 0) {
                             this.deviceList.push({ id: elementSerial, name: elementName });
                             await this.setObjectNotExistsAsync(elementName, {
