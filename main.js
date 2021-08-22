@@ -46,6 +46,7 @@ class Wmswebcontrol extends utils.Adapter {
         this.localUpdateIntervals = {};
         axiosCookieJarSupport(axios);
         this.cookieJar = new tough.CookieJar();
+
         this.deviceList = [];
         if (this.config.interval < 1) {
             this.config.interval = 1;
@@ -181,6 +182,7 @@ class Wmswebcontrol extends utils.Adapter {
                                                 this.log.error("Login was not successful restart adapter");
                                                 this.restart();
                                             }
+                                            error.response && this.log.error(JSON.stringify(error.response.data));
                                             error.config && this.log.error(error.config.url);
                                             this.log.error(error);
 
@@ -190,6 +192,7 @@ class Wmswebcontrol extends utils.Adapter {
                         })
                         .catch((error) => {
                             error.config && this.log.error(error.config.url);
+                            error.response && this.log.error(JSON.stringify(error.response.data));
                             this.log.error(error);
                             reject();
                         });
@@ -301,6 +304,7 @@ class Wmswebcontrol extends utils.Adapter {
                 length: 12800,
             })
                 .then((result) => {
+                    this.log.debug(JSON.stringify(result.response)
                     result = Buffer.from(result.response.data, "base64");
                     const deviceArray = result.toString("hex").match(/(.{1,128})/g);
                     if (!deviceArray) {
@@ -338,6 +342,8 @@ class Wmswebcontrol extends utils.Adapter {
                 })
                 .catch((error) => {
                     this.log.error("Get DevicesList failed");
+
+                    error.response && this.log.error(JSON.stringify(error.response.data));
                     this.log.error(error);
                     reject();
                 });
@@ -426,10 +432,9 @@ class Wmswebcontrol extends utils.Adapter {
                 data: data,
             })
                 .then((response) => {
-                    resolve(response.data);
-
-                    response.config && this.log.debug("Response:" + response.config.url);
                     this.log.debug(JSON.stringify(response.data));
+                    resolve(response.data);
+                    response.config && this.log.debug("Response:" + response.config.url);
                 })
                 .catch((error) => {
                     if (error.response.status === 401) {
