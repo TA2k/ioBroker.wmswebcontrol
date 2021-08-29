@@ -536,6 +536,9 @@ class Wmswebcontrol extends utils.Adapter {
                     if (parameterState.val === 12) {
                         value = state.val * 2;
                     }
+                    if (parameterState.val === 13) {
+                        value = state.val + 127;
+                    }
                     this.setState(trimmedID, value, false);
                 }
             } else {
@@ -559,6 +562,9 @@ class Wmswebcontrol extends utils.Adapter {
                     }
                     if (parameterState.val === 12) {
                         value = state.val / 2;
+                    }
+                    if (parameterState.val === 13) {
+                        value = state.val - 127;
                     }
                     this.setState(id + "Convert", value, true);
                 }
