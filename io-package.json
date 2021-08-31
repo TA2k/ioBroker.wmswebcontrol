@@ -2,6 +2,7 @@
     "common": {
         "name": "wmswebcontrol",
         "version": "0.0.2",
+        "title": "Warema WMS Webcontrol Pro",
         "news": {
             "0.0.2": {
                 "en": "initial release",
@@ -16,7 +17,6 @@
                 "zh-cn": "首次出版"
             }
         },
-        "commonTitle": "Warema WMS Webcontrol Pro",
         "titleLang": {
             "en": "Warema WMS Webcontrol Pro",
             "de": "Warema WMS Webcontrol Pro",
