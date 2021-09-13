@@ -500,6 +500,7 @@ class Wmswebcontrol extends utils.Adapter {
      */
     onUnload(callback) {
         try {
+            this.setState("info.connection", false, true);
             clearInterval(this.appUpdateInterval);
             clearInterval(this.refreshTokenInterval);
             clearTimeout(this.waitTimeout);
