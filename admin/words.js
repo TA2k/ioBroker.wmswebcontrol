@@ -14,9 +14,9 @@ systemDictionary = {
         pl: "Ustawienia adaptera dla wmswebcontrol",
         "zh-cn": "wmswebcontrol的适配器设置",
     },
-    user: {
-        en: "App Username",
-        de: "App-Benutzername",
+    "webcontrol Pro App Email": {
+        en: "webcontrol Pro App Email",
+        de: "webcontrol Pro App Email",
         ru: "Имя пользователя приложения",
         pt: "Nome de usuário do aplicativo",
         nl: "App-gebruikersnaam",
@@ -26,9 +26,9 @@ systemDictionary = {
         pl: "Nazwa użytkownika aplikacji",
         "zh-cn": "应用用户名",
     },
-    password: {
-        en: "App Password",
-        de: "App-Passwort",
+    "webcontrol Pro App Password": {
+        en: "webcontrol Pro App Password",
+        de: "webcontrol Pro App Passwort",
         ru: "Пароль приложения",
         pt: "Senha de app",
         nl: "App-wachtwoord",
@@ -38,7 +38,7 @@ systemDictionary = {
         pl: "Hasło do aplikacji",
         "zh-cn": "应用密码",
     },
-    interval: {
+    "Update interval in minutes": {
         en: "Update interval in minutes",
         de: "Aktualisierungsintervall in Minuten",
         ru: "Интервал обновления в минутах",

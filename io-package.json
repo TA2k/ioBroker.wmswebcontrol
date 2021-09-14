@@ -1,10 +1,10 @@
 {
     "common": {
         "name": "wmswebcontrol",
-        "version": "0.0.2",
+        "version": "0.0.3",
         "title": "Warema WMS Webcontrol Pro",
         "news": {
-            "0.0.2": {
+            "0.0.3": {
                 "en": "initial release",
                 "de": "Erstveröffentlichung",
                 "ru": "Начальная версия",
