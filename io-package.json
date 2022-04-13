@@ -1,10 +1,13 @@
 {
     "common": {
         "name": "wmswebcontrol",
-        "version": "0.0.3",
+        "version": "0.0.5",
         "title": "Warema WMS Webcontrol Pro",
         "news": {
-            "0.0.3": {
+            "0.0.5": {
+                "en": "Bugfixes"
+            },
+            "0.0.4": {
                 "en": "initial release",
                 "de": "Erstveröffentlichung",
                 "ru": "Начальная версия",
@@ -60,6 +63,11 @@
         "connectionType": "cloud",
         "dataSource": "poll",
         "materialize": true,
+        "plugins": {
+            "sentry": {
+                "dsn": "https://adfef807515a4d6a8812f0f7cd28f70f@sentry.iobroker.net/159"
+            }
+        },
         "dependencies": [
             {
                 "js-controller": ">=3.0.0"

@@ -173,6 +173,7 @@ class Wmswebcontrol extends utils.Adapter {
                                             this.log.debug(JSON.stringify(response.data));
                                             this.aToken = response.data.access_token;
                                             this.rToken = response.data.refresh_token;
+                                            this.refreshTokenInterval && clearInterval(this.refreshTokenInterval);
                                             this.refreshTokenInterval = setInterval(() => {
                                                 this.refreshToken().catch(() => {});
                                             }, 15 * 60 * 1000); // 15min
@@ -458,7 +459,10 @@ class Wmswebcontrol extends utils.Adapter {
                                 }, 1 * 60 * 1000);
                             })
                             .catch(() => {
-                                this.log.error("Failed to refresh token");
+                                this.log.error("Failed to refresh token. Relogin");
+                                this.login().catch(() => {
+                                    this.log.error("Failed to relogin");
+                                });
                             });
                     }
                     error.config && this.log.error(error.config.url);
