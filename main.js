@@ -59,16 +59,19 @@ class Wmswebcontrol extends utils.Adapter {
     // in this template all states changes inside the adapters namespace are subscribed
     this.subscribeStates("*");
     await this.login();
+    if (this.aToken) {
+      await this.getDeviceInfo();
 
-    this.setState("info.connection", true, true);
-    this.log.info("Login successful");
-    await this.getDeviceInfo();
+      await this.getDeviceList();
 
-    await this.getDeviceList();
-
-    this.appUpdateInterval = setInterval(async () => {
-      await this.getDeviceStatus();
-    }, this.config.interval * 60 * 1000);
+      this.appUpdateInterval = setInterval(async () => {
+        await this.getDeviceStatus();
+      }, this.config.interval * 60 * 1000);
+      this.refreshTokenInterval && clearInterval(this.refreshTokenInterval);
+      this.refreshTokenInterval = setInterval(() => {
+        this.refreshToken().catch(() => {});
+      }, 15 * 60 * 1000); // 15min
+    }
   }
 
   async login() {
@@ -132,7 +135,7 @@ class Wmswebcontrol extends utils.Adapter {
         this.log.error(JSON.stringify(response.data));
       })
       .catch(async (error) => {
-        const parameters = qs.parse(error.config.url.split("?")[1]);
+        const parameters = qs.parse(error.request._options.query);
 
         this.log.debug("code: " + parameters.code);
         this.log.debug("code_verifier: " + code_verifier);
@@ -158,13 +161,11 @@ class Wmswebcontrol extends utils.Adapter {
             "&grant_type=authorization_code&redirect_uri=wcpmobileapp%3A%2F%2Fpages%2Fredirect",
         })
           .then((response) => {
+            this.setState("info.connection", true, true);
+            this.log.info("Login successful");
             this.log.debug(JSON.stringify(response.data));
             this.aToken = response.data.access_token;
             this.rToken = response.data.refresh_token;
-            this.refreshTokenInterval && clearInterval(this.refreshTokenInterval);
-            this.refreshTokenInterval = setInterval(() => {
-              this.refreshToken().catch(() => {});
-            }, 15 * 60 * 1000); // 15min
           })
           .catch((error) => {
             if (error.response.status === 400) {
@@ -264,7 +265,7 @@ class Wmswebcontrol extends utils.Adapter {
       });
   }
   async getDeviceList() {
-    this.genericPostMessage("mb8Read", {
+    await this.genericPostMessage("mb8Read", {
       address: 0,
       block: 42,
       eui: parseInt(this.webControlId),
@@ -394,7 +395,7 @@ class Wmswebcontrol extends utils.Adapter {
     const data = JSON.stringify({ action: action, parameters: parameter, changeIds: [] });
     this.log.debug(url);
     this.log.debug(data);
-    await this.requestClient({
+    return await this.requestClient({
       method: "post",
 
       withCredentials: true,
@@ -410,8 +411,8 @@ class Wmswebcontrol extends utils.Adapter {
     })
       .then((response) => {
         this.log.debug(JSON.stringify(response.data));
-        resolve(response.data);
         response.config && this.log.debug("Response:" + response.config.url);
+        return response.data;
       })
       .catch((error) => {
         if (error.response.status === 401) {

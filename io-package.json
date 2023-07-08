@@ -1,117 +1,109 @@
 {
-    "common": {
-        "name": "wmswebcontrol",
-        "version": "0.0.5",
-        "title": "Warema WMS Webcontrol Pro",
-        "news": {
-            "0.0.5": {
-                "en": "Bugfixes"
-            },
-            "0.0.4": {
-                "en": "initial release",
-                "de": "Erstveröffentlichung",
-                "ru": "Начальная версия",
-                "pt": "lançamento inicial",
-                "nl": "Eerste uitgave",
-                "fr": "Première version",
-                "it": "Versione iniziale",
-                "es": "Versión inicial",
-                "pl": "Pierwsze wydanie",
-                "zh-cn": "首次出版"
-            }
-        },
-        "titleLang": {
-            "en": "Warema WMS Webcontrol Pro",
-            "de": "Warema WMS Webcontrol Pro",
-            "ru": "Warema WMS Webcontrol Pro",
-            "pt": "Warema WMS Webcontrol Pro",
-            "nl": "Warema WMS Webcontrol Pro",
-            "fr": "Contrôle Web Warema WMS",
-            "it": "Warema WMS Webcontrol Pro",
-            "es": "Webcontrol de Warema WMS",
-            "pl": "Warema WMS Webcontrol Pro",
-            "zh-cn": "Warema WMS Webcontrol Pro"
-        },
-        "desc": {
-            "en": "Adapter for Warema WMS Webcontrol Pro",
-            "de": "Adapter für Warema WMS Webcontrol Pro",
-            "ru": "Адаптер для Warema WMS Webcontrol Pro",
-            "pt": "Adaptador para Warema WMS Webcontrol Pro",
-            "nl": "Adapter voor Warema WMS Webcontrol Pro",
-            "fr": "Adaptateur pour Warema WMS Webcontrol Pro",
-            "it": "Adattatore per Warema WMS Webcontrol Pro",
-            "es": "Adaptador para Warema WMS Webcontrol Pro",
-            "pl": "Adapter do Warema WMS Webcontrol Pro",
-            "zh-cn": "Warema WMS Webcontrol Pro适配器"
-        },
-        "authors": [
-            "TA2k <tombox2020@gmail.com>"
-        ],
-        "keywords": [
-            "Warema WMS Webcontrol Pro"
-        ],
-        "license": "MIT",
-        "platform": "Javascript/Node.js",
-        "icon": "wmswebcontrol.png",
-        "enabled": true,
-        "extIcon": "https://raw.githubusercontent.com/TA2k/ioBroker.wmswebcontrol/master/admin/wmswebcontrol.png",
-        "readme": "https://github.com/TA2k/ioBroker.wmswebcontrol/blob/master/README.md",
-        "loglevel": "info",
-        "mode": "daemon",
-        "type": "iot-systems",
-        "compact": true,
-        "connectionType": "cloud",
-        "dataSource": "poll",
-        "materialize": true,
-        "plugins": {
-            "sentry": {
-                "dsn": "https://adfef807515a4d6a8812f0f7cd28f70f@sentry.iobroker.net/159"
-            }
-        },
-        "dependencies": [
-            {
-                "js-controller": ">=3.0.0"
-            }
-        ],
-        "globalDependencies": [
-            {
-                "admin": ">=4.0.9"
-            }
-        ]
+  "common": {
+    "name": "wmswebcontrol",
+    "version": "0.0.6",
+    "title": "Warema WMS Webcontrol Pro",
+    "news": {
+      "0.0.5": {
+        "en": "Bugfixes"
+      },
+      "0.0.4": {
+        "en": "initial release",
+        "de": "Erstveröffentlichung",
+        "ru": "Начальная версия",
+        "pt": "lançamento inicial",
+        "nl": "Eerste uitgave",
+        "fr": "Première version",
+        "it": "Versione iniziale",
+        "es": "Versión inicial",
+        "pl": "Pierwsze wydanie",
+        "zh-cn": "首次出版"
+      }
     },
-    "encryptedNative": [
-        "password"
-    ],
-    "protectedNative": [
-        "password"
-    ],
-    "native": {
-        "user": "",
-        "password": "",
-        "interval": 5
+    "titleLang": {
+      "en": "Warema WMS Webcontrol Pro",
+      "de": "Warema WMS Webcontrol Pro",
+      "ru": "Warema WMS Webcontrol Pro",
+      "pt": "Warema WMS Webcontrol Pro",
+      "nl": "Warema WMS Webcontrol Pro",
+      "fr": "Contrôle Web Warema WMS",
+      "it": "Warema WMS Webcontrol Pro",
+      "es": "Webcontrol de Warema WMS",
+      "pl": "Warema WMS Webcontrol Pro",
+      "zh-cn": "Warema WMS Webcontrol Pro"
     },
-    "objects": [],
-    "instanceObjects": [
-        {
-            "_id": "info",
-            "type": "channel",
-            "common": {
-                "name": "Information"
-            },
-            "native": {}
-        },
-        {
-            "_id": "info.connection",
-            "type": "state",
-            "common": {
-                "role": "indicator.connected",
-                "name": "Device or service connected",
-                "type": "boolean",
-                "read": true,
-                "write": false,
-                "def": false
-            },
-            "native": {}
-        }
+    "desc": {
+      "en": "Adapter for Warema WMS Webcontrol Pro",
+      "de": "Adapter für Warema WMS Webcontrol Pro",
+      "ru": "Адаптер для Warema WMS Webcontrol Pro",
+      "pt": "Adaptador para Warema WMS Webcontrol Pro",
+      "nl": "Adapter voor Warema WMS Webcontrol Pro",
+      "fr": "Adaptateur pour Warema WMS Webcontrol Pro",
+      "it": "Adattatore per Warema WMS Webcontrol Pro",
+      "es": "Adaptador para Warema WMS Webcontrol Pro",
+      "pl": "Adapter do Warema WMS Webcontrol Pro",
+      "zh-cn": "Warema WMS Webcontrol Pro适配器"
+    },
+    "authors": ["TA2k <tombox2020@gmail.com>"],
+    "keywords": ["Warema WMS Webcontrol Pro"],
+    "license": "MIT",
+    "platform": "Javascript/Node.js",
+    "icon": "wmswebcontrol.png",
+    "enabled": true,
+    "extIcon": "https://raw.githubusercontent.com/TA2k/ioBroker.wmswebcontrol/master/admin/wmswebcontrol.png",
+    "readme": "https://github.com/TA2k/ioBroker.wmswebcontrol/blob/master/README.md",
+    "loglevel": "info",
+    "mode": "daemon",
+    "type": "iot-systems",
+    "compact": true,
+    "connectionType": "cloud",
+    "dataSource": "poll",
+    "materialize": true,
+    "plugins": {
+      "sentry": {
+        "dsn": "https://adfef807515a4d6a8812f0f7cd28f70f@sentry.iobroker.net/159"
+      }
+    },
+    "dependencies": [
+      {
+        "js-controller": ">=3.0.0"
+      }
+    ],
+    "globalDependencies": [
+      {
+        "admin": ">=4.0.9"
+      }
     ]
+  },
+  "encryptedNative": ["password"],
+  "protectedNative": ["password"],
+  "native": {
+    "user": "",
+    "password": "",
+    "interval": 5
+  },
+  "objects": [],
+  "instanceObjects": [
+    {
+      "_id": "info",
+      "type": "channel",
+      "common": {
+        "name": "Information"
+      },
+      "native": {}
+    },
+    {
+      "_id": "info.connection",
+      "type": "state",
+      "common": {
+        "role": "indicator.connected",
+        "name": "Device or service connected",
+        "type": "boolean",
+        "read": true,
+        "write": false,
+        "def": false
+      },
+      "native": {}
+    }
+  ]
 }
