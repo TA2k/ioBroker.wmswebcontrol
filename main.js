@@ -12,6 +12,7 @@ const { HttpsCookieAgent } = require("http-cookie-agent/http");
 const tough = require("tough-cookie");
 const crypto = require("crypto");
 const { extractKeys } = require("./lib/extractKeys");
+const qs = require("qs");
 
 class Wmswebcontrol extends utils.Adapter {
   /**
@@ -74,7 +75,7 @@ class Wmswebcontrol extends utils.Adapter {
     const [code_verifier, codeChallenge] = this.getCodeChallenge();
     const nonce = this.randomString(50);
     const state = this.randomString(50);
-    const response = await this.requestClient({
+    let response = await this.requestClient({
       method: "get",
       url:
         "https://auth.warema.de/v1/connect/authorize?redirect_uri=wcpmobileapp%3A%2F%2Fpages%2Fredirect&client_id=devicecloud_wcpmobileapp&response_type=code&grant_type=authorization_code&nonce=" +
@@ -94,7 +95,7 @@ class Wmswebcontrol extends utils.Adapter {
 
     const tokenA = response.data.split('RequestVerificationToken" type="hidden" value="');
     const token = tokenA[1].split('" />')[0];
-    await this.requestClient({
+    response = await this.requestClient({
       method: "post",
       withCredentials: true,
       url: "https://auth.warema.de" + response.request.path,
@@ -131,8 +132,9 @@ class Wmswebcontrol extends utils.Adapter {
         this.log.error(JSON.stringify(response.data));
       })
       .catch(async (error) => {
-        const code = error.config.url.split("code=")[1].split("&scope")[0];
-        this.log.debug("code: " + code);
+        const parameters = qs.parse(error.config.url.split("?")[1]);
+
+        this.log.debug("code: " + parameters.code);
         this.log.debug("code_verifier: " + code_verifier);
         this.log.debug("codeChallenge: " + codeChallenge);
         this.log.debug("state: " + state);
@@ -150,7 +152,7 @@ class Wmswebcontrol extends utils.Adapter {
           },
           data:
             "client_id=devicecloud_wcpmobileapp&client_secret=nosecret&code=" +
-            code +
+            parameters.code +
             "&code_verifier=" +
             code_verifier +
             "&grant_type=authorization_code&redirect_uri=wcpmobileapp%3A%2F%2Fpages%2Fredirect",
