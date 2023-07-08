@@ -55,7 +55,10 @@ class Wmswebcontrol extends utils.Adapter {
     if (this.config.interval < 1) {
       this.config.interval = 1;
     }
-
+    if (!this.config.user || !this.config.password) {
+      this.log.info("Please enter your username and password!");
+      return;
+    }
     // in this template all states changes inside the adapters namespace are subscribed
     this.subscribeStates("*");
     await this.login();
