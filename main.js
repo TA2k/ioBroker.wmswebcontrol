@@ -275,6 +275,9 @@ class Wmswebcontrol extends utils.Adapter {
       length: 12800,
     })
       .then(async (result) => {
+        if (!result) {
+          return;
+        }
         this.log.debug(JSON.stringify(result.response));
         result = Buffer.from(result.response.data, "base64");
         const deviceArray = result.toString("hex").match(/(.{1,128})/g);
