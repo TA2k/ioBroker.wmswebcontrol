@@ -4,6 +4,9 @@
     "version": "0.0.6",
     "title": "Warema WMS Webcontrol Pro",
     "news": {
+      "0.0.6": {
+        "en": "Bugfixes"
+      },
       "0.0.5": {
         "en": "Bugfixes"
       },
