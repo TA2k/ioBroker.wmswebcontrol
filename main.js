@@ -97,8 +97,14 @@ class Wmswebcontrol extends utils.Adapter {
         accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
         "accept-language": "de-de",
       },
+    }).catch((error) => {
+      error.response && this.log.error(JSON.stringify(error.response.data));
+      error.config && this.log.error(error.config.url);
+      this.log.error(error);
     });
-
+    if (!response) {
+      return;
+    }
     const tokenA = response.data.split('RequestVerificationToken" type="hidden" value="');
     const token = tokenA[1].split('" />')[0];
     response = await this.requestClient({
@@ -120,7 +126,15 @@ class Wmswebcontrol extends utils.Adapter {
         "&Input.RememberMe=true&button=login&__RequestVerificationToken=" +
         token +
         "&Input.RememberMe=false",
+    }).catch((error) => {
+      error.response && this.log.error(JSON.stringify(error.response.data));
+      error.config && this.log.error(error.config.url);
+      this.log.error(error);
+      return null;
     });
+    if (!response) {
+      return;
+    }
 
     const url = response.data.split("0;url=")[1].split('" data-url')[0].replace(/&amp;/g, "&");
     await this.requestClient({
