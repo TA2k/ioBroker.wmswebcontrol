@@ -11,8 +11,8 @@ const axios = require("axios").default;
 const { HttpsCookieAgent } = require("http-cookie-agent/http");
 const tough = require("tough-cookie");
 const crypto = require("crypto");
-const { extractKeys } = require("./lib/extractKeys");
 const qs = require("qs");
+const Json2iob = require("json2iob");
 
 class Wmswebcontrol extends utils.Adapter {
   /**
@@ -33,6 +33,15 @@ class Wmswebcontrol extends utils.Adapter {
         cookies: { jar: this.cookieJar },
       }),
     });
+    this.json2iob = new Json2iob(this);
+    this.aToken = "";
+    this.rToken = "";
+    this.userAgent = "WMS WebControl pro/2.7.0 (iPhone; iOS 16.7.5; Scale/3.00)";
+    this.appUpdateInterval = null;
+    this.deviceIdArray = [];
+    this.localUpdateIntervals = {};
+
+    this.deviceList = [];
   }
 
   /**
@@ -43,15 +52,7 @@ class Wmswebcontrol extends utils.Adapter {
 
     // Reset the connection indicator during startup
     this.setState("info.connection", false, true);
-    this.extractKeys = extractKeys;
-    this.aToken = "";
-    this.rToken = "";
-    this.userAgent = "WMS WebControl pro/1.24.0 (iPhone; iOS 12.5.1; Scale/2.00)";
-    this.appUpdateInterval = null;
-    this.deviceIdArray = [];
-    this.localUpdateIntervals = {};
 
-    this.deviceList = [];
     if (this.config.interval < 1) {
       this.config.interval = 1;
     }
@@ -83,14 +84,19 @@ class Wmswebcontrol extends utils.Adapter {
     const state = this.randomString(50);
     let response = await this.requestClient({
       method: "get",
-      url:
-        "https://auth.warema.de/v1/connect/authorize?redirect_uri=wcpmobileapp%3A%2F%2Fpages%2Fredirect&client_id=devicecloud_wcpmobileapp&response_type=code&grant_type=authorization_code&nonce=" +
-        nonce +
-        "&state=" +
-        state +
-        "&scope=openid%20profile%20offline_access%20devicecloud_devicecloudservice_devices_get%20devicecloud_devicecloudservice_devices_register%20devicecloud_devicecloudservice_devices_unregister%20devicecloud_devicecloudservice_commoncommand_action%20devicecloud_devicecloudservice_commoncommand_discovery%20devicecloud_devicecloudservice_commoncommand_ping%20devicecloud_devicecloudservice_commoncommand_scene%20devicecloud_devicecloudservice_commoncommand_status%20devicecloud_devicecloudservice_communication_systemnative&code_challenge=" +
-        codeChallenge +
-        "&code_challenge_method=S256",
+      url: "https://auth.warema.de/v1/connect/authorize",
+      params: {
+        redirect_uri: "wcpmobileapp://pages/redirect",
+        client_id: "devicecloud_wcpmobileapp",
+        response_type: "code",
+        grant_type: "authorization_code",
+        nonce: nonce,
+        state: state,
+        scope:
+          "openid profile offline_access devicecloud_devicecloudservice_devices_get devicecloud_devicecloudservice_devices_register devicecloud_devicecloudservice_devices_unregister devicecloud_devicecloudservice_commoncommand_action devicecloud_devicecloudservice_commoncommand_discovery devicecloud_devicecloudservice_commoncommand_ping devicecloud_devicecloudservice_commoncommand_scene devicecloud_devicecloudservice_commoncommand_status devicecloud_devicecloudservice_communication_systemnative",
+        code_challenge: codeChallenge,
+        code_challenge_method: "S256",
+      },
       headers: {
         "user-agent":
           "Mozilla/5.0 (iPhone; CPU iPhone OS 12_5_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/12.1.2 Mobile/15E148 Safari/604.1",
@@ -243,7 +249,7 @@ class Wmswebcontrol extends utils.Adapter {
       .then((response) => {
         this.log.debug(JSON.stringify(response.data));
         if (response.data.result) {
-          this.extractKeys(this, "devices", response.data.result, false, "serialNumber");
+          this.json2iob.parse("devices", response.data.result, { preferedArrayName: "serialNumber" });
           this.webControlId = response.data.result[0].serialNumber;
           this.wcType = response.data.result[0].type.toLowerCase();
           this.requestClient({
@@ -267,7 +273,7 @@ class Wmswebcontrol extends utils.Adapter {
             .then((response) => {
               this.log.debug(JSON.stringify(response.data));
               if (response.data.response) {
-                this.extractKeys(this, "devices." + this.webControlId, response.data.response);
+                this.json2iob.parse("devices." + this.webControlId, response.data.response);
               }
             })
             .catch((error) => {
@@ -356,7 +362,7 @@ class Wmswebcontrol extends utils.Adapter {
       })
         .then((result) => {
           this.log.debug(JSON.stringify(result.response));
-          this.extractKeys(this, element.name, result.response, true);
+          this.json2iob.parse(element.name, result.response, { forceIndex: true });
         })
         .catch(() => {
           this.log.error("Get device status failed");
@@ -520,17 +526,19 @@ class Wmswebcontrol extends utils.Adapter {
           const trimmedID = id.replace("Convert", "");
           const index = trimmedID.slice(-1);
           const parameterState = await this.getStateAsync(pre + ".parameterType" + index);
-          let value = state.val;
-          if (parameterState.val === 55) {
-            value = this.decimalToHex(state.val / 2);
+          if (parameterState && state && state.val) {
+            let value = state.val;
+            if (parameterState.val === 55) {
+              value = this.decimalToHex(state.val / 2);
+            }
+            if (parameterState.val === 12) {
+              value = state.val * 2;
+            }
+            if (parameterState.val === 13) {
+              value = state.val + 127;
+            }
+            this.setState(trimmedID, value, false);
           }
-          if (parameterState.val === 12) {
-            value = state.val * 2;
-          }
-          if (parameterState.val === 13) {
-            value = state.val + 127;
-          }
-          this.setState(trimmedID, value, false);
         }
       } else {
         if (id.indexOf(".setting") !== -1 && id.indexOf("Convert") === -1) {
