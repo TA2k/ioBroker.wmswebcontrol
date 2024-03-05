@@ -250,8 +250,6 @@ class Wmswebcontrol extends utils.Adapter {
     this.log.info("get devices");
     await this.requestClient({
       method: "get",
-
-      withCredentials: true,
       url: "https://devicecloudservice.prod.devicecloud.warema.de/api/v1.0/devices",
       headers: {
         accept: "*/*",
@@ -299,6 +297,7 @@ class Wmswebcontrol extends utils.Adapter {
         }
       })
       .catch((error) => {
+        this.log.error("Get Devices failed");
         error.config && this.log.error(error.config.url);
         this.log.error(error);
       });
