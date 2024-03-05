@@ -183,6 +183,8 @@ class Wmswebcontrol extends utils.Adapter {
       await this.getDeviceInfo();
 
       await this.getDeviceList();
+      await this.sleep(5000);
+      await this.getDeviceStatus();
       this.appUpdateInterval = setInterval(async () => {
         await this.getDeviceStatus();
       }, this.config.interval * 60 * 1000);
