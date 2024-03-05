@@ -141,8 +141,16 @@ class Wmswebcontrol extends utils.Adapter {
     if (!response) {
       return;
     }
-
-    const url = response.data.split("0;url=")[1].split('" data-url')[0].replace(/&amp;/g, "&");
+    let url = "";
+    try {
+      url = response.data.split("0;url=")[1].split('" data-url')[0].replace(/&amp;/g, "&");
+    } catch (error) {
+      this.log.error(response.data);
+      this.log.error("Please check username and password");
+    }
+    if (!url) {
+      return;
+    }
     await this.requestClient({
       method: "get",
       withCredentials: true,
@@ -232,7 +240,7 @@ class Wmswebcontrol extends utils.Adapter {
       });
   }
   async getDeviceInfo() {
-    this.log.debug("get devices");
+    this.log.info("get devices");
     await this.requestClient({
       method: "get",
 
@@ -248,6 +256,7 @@ class Wmswebcontrol extends utils.Adapter {
     })
       .then((response) => {
         this.log.debug(JSON.stringify(response.data));
+        this.log.info("Devices found: " + response.data.result.length);
         if (response.data.result) {
           this.json2iob.parse("devices", response.data.result, { preferedArrayName: "serialNumber" });
           this.webControlId = response.data.result[0].serialNumber;
