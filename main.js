@@ -261,67 +261,106 @@ class Wmswebcontrol extends utils.Adapter {
           authorization: "Bearer " + this.aToken,
         },
       })
+      .json()
       .then((res) => {
-        this.log.debug(JSON.stringify(res.body));
-        this.log.info("Devices found: " + res.body.result.length);
-      })
-      .catch((error) => {
-        this.log.error(error);
-      });
-    await axios({
-      method: "get",
-      url: "https://devicecloudservice.prod.devicecloud.warema.de/api/v1.0/devices",
-      headers: {
-        Accept: "*/*",
-        "accept-encoding": "gzip, deflate, br",
-        "content-type": "application/x-www-form-urlencoded",
-        "user-agent": this.userAgent,
-        "accept-language": "de-DE;q=1",
-        authorization: "Bearer " + this.aToken,
-      },
-    })
-      .then((response) => {
-        this.log.debug(JSON.stringify(response.data));
-        this.log.info("Devices found: " + response.data.result.length);
-        if (response.data.result) {
-          this.json2iob.parse("devices", response.data.result, { preferedArrayName: "serialNumber" });
-          this.webControlId = response.data.result[0].serialNumber;
-          this.wcType = response.data.result[0].type.toLowerCase();
-          this.requestClient({
-            method: "post",
-            withCredentials: true,
-            url:
+        this.log.debug(JSON.stringify(res));
+        if (!res.result) {
+          this.log.error("No devices found");
+          return;
+        }
+        this.log.info("Devices found: " + res.result.length);
+        if (res.result) {
+          this.json2iob.parse("devices", res.result, { preferedArrayName: "serialNumber" });
+          this.webControlId = res.result[0].serialNumber;
+          this.wcType = res.result[0].type.toLowerCase();
+          got
+            .post(
               "https://devicecloudservice.prod.devicecloud.warema.de/api/v1.0/communication/" +
-              this.wcType +
-              "/" +
-              this.webControlId +
-              "/postMessage/",
-            headers: {
-              accept: "*/*",
-              "content-type": "application/json",
-              "user-agent": this.userAgent,
-              "accept-language": "de-DE;q=1",
-              authorization: "Bearer " + this.aToken,
-            },
-            data: JSON.stringify({ action: "info", changeIds: [] }),
-          })
-            .then((response) => {
-              this.log.debug(JSON.stringify(response.data));
-              if (response.data.response) {
-                this.json2iob.parse("devices." + this.webControlId, response.data.response);
+                this.wcType +
+                "/" +
+                this.webControlId +
+                "/postMessage/",
+              {
+                http2: true,
+                headers: {
+                  accept: "*/*",
+                  "content-type": "application/json",
+                  "user-agent": this.userAgent,
+                  "accept-language": "de-DE;q=1",
+                  authorization: "Bearer " + this.aToken,
+                },
+                json: { action: "info", changeIds: [] },
+              },
+            )
+            .json()
+            .then((res) => {
+              this.log.debug(JSON.stringify(res));
+              if (res.response) {
+                this.json2iob.parse("devices." + this.webControlId, res.response);
               }
             })
             .catch((error) => {
-              error.config && this.log.error(error.config.url);
               this.log.error(error);
             });
         }
       })
       .catch((error) => {
-        this.log.error("Get Devices failed");
-        error.config && this.log.error(error.config.url);
         this.log.error(error);
       });
+    // await axios({
+    //   method: "get",
+    //   url: "https://devicecloudservice.prod.devicecloud.warema.de/api/v1.0/devices",
+    //   headers: {
+    //     Accept: "*/*",
+    //     "accept-encoding": "gzip, deflate, br",
+    //     "content-type": "application/x-www-form-urlencoded",
+    //     "user-agent": this.userAgent,
+    //     "accept-language": "de-DE;q=1",
+    //     authorization: "Bearer " + this.aToken,
+    //   },
+    // })
+    //   .then((response) => {
+    //     this.log.debug(JSON.stringify(response.data));
+    //     this.log.info("Devices found: " + response.data.result.length);
+    //     if (response.data.result) {
+    //       this.json2iob.parse("devices", response.data.result, { preferedArrayName: "serialNumber" });
+    //       this.webControlId = response.data.result[0].serialNumber;
+    //       this.wcType = response.data.result[0].type.toLowerCase();
+    //       this.requestClient({
+    //         method: "post",
+    //         withCredentials: true,
+    //         url:
+    //           "https://devicecloudservice.prod.devicecloud.warema.de/api/v1.0/communication/" +
+    //           this.wcType +
+    //           "/" +
+    //           this.webControlId +
+    //           "/postMessage/",
+    //         headers: {
+    //           accept: "*/*",
+    //           "content-type": "application/json",
+    //           "user-agent": this.userAgent,
+    //           "accept-language": "de-DE;q=1",
+    //           authorization: "Bearer " + this.aToken,
+    //         },
+    //         data: JSON.stringify({ action: "info", changeIds: [] }),
+    //       })
+    //         .then((response) => {
+    //           this.log.debug(JSON.stringify(response.data));
+    //           if (response.data.response) {
+    //             this.json2iob.parse("devices." + this.webControlId, response.data.response);
+    //           }
+    //         })
+    //         .catch((error) => {
+    //           error.config && this.log.error(error.config.url);
+    //           this.log.error(error);
+    //         });
+    //     }
+    //   })
+    //   .catch((error) => {
+    //     this.log.error("Get Devices failed");
+    //     error.config && this.log.error(error.config.url);
+    //     this.log.error(error);
+    //   });
   }
   async getDeviceList() {
     await this.genericPostMessage("mb8Read", {
