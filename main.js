@@ -252,7 +252,8 @@ class Wmswebcontrol extends utils.Adapter {
       method: "get",
       url: "https://devicecloudservice.prod.devicecloud.warema.de/api/v1.0/devices",
       headers: {
-        accept: "*/*",
+        host: "devicecloudservice.prod.devicecloud.warema.de",
+        Accept: "*/*",
         "content-type": "application/x-www-form-urlencoded",
         "user-agent": this.userAgent,
         "accept-language": "de-DE;q=1",
