@@ -254,6 +254,7 @@ class Wmswebcontrol extends utils.Adapter {
       headers: {
         host: "devicecloudservice.prod.devicecloud.warema.de",
         Accept: "*/*",
+        "accept-encoding": "gzip, deflate, br",
         "content-type": "application/x-www-form-urlencoded",
         "user-agent": this.userAgent,
         "accept-language": "de-DE;q=1",
