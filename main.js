@@ -421,6 +421,10 @@ class Wmswebcontrol extends utils.Adapter {
       });
   }
   async genericPostMessage(action, parameter) {
+    if (!this.wcType || !this.webControlId) {
+      this.log.error("No webcontrol id or type found");
+      return;
+    }
     const url =
       "https://devicecloudservice.prod.devicecloud.warema.de/api/v1.0/communication/" +
       this.wcType +
