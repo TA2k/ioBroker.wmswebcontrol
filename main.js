@@ -36,7 +36,7 @@ class Wmswebcontrol extends utils.Adapter {
     this.json2iob = new Json2iob(this);
     this.aToken = "";
     this.rToken = "";
-    this.userAgent = "WMS WebControl pro/2.7.0 (iPhone; iOS 16.7.5; Scale/3.00)";
+    this.userAgent = "WMS WebControl pro/2.7.0 (iPhone; iOS 16.7.6; Scale/3.00)";
     this.appUpdateInterval = null;
     this.deviceIdArray = [];
     this.localUpdateIntervals = {};
@@ -64,6 +64,7 @@ class Wmswebcontrol extends utils.Adapter {
     this.subscribeStates("*");
     await this.login();
     if (this.aToken) {
+      await this.sleep(1000);
       await this.getDeviceInfo();
 
       await this.getDeviceList();
@@ -99,7 +100,7 @@ class Wmswebcontrol extends utils.Adapter {
       },
       headers: {
         "user-agent":
-          "Mozilla/5.0 (iPhone; CPU iPhone OS 12_5_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/12.1.2 Mobile/15E148 Safari/604.1",
+          "Mozilla/5.0 (iPhone; CPU iPhone OS 16_7_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.6 Mobile/15E148 Safari/604.1",
         accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
         "accept-language": "de-de",
       },
@@ -122,7 +123,7 @@ class Wmswebcontrol extends utils.Adapter {
         "content-type": "application/x-www-form-urlencoded",
         "accept-language": "de-de",
         "user-agent":
-          "Mozilla/5.0 (iPhone; CPU iPhone OS 12_5_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/12.1.2 Mobile/15E148 Safari/604.1",
+          "Mozilla/5.0 (iPhone; CPU iPhone OS 16_7_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.6 Mobile/15E148 Safari/604.1",
       },
       data:
         "Input.Username=" +
@@ -159,7 +160,7 @@ class Wmswebcontrol extends utils.Adapter {
         accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
         "accept-language": "de-de",
         "user-agent":
-          "Mozilla/5.0 (iPhone; CPU iPhone OS 12_5_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/12.1.2 Mobile/15E148 Safari/604.1",
+          "Mozilla/5.0 (iPhone; CPU iPhone OS 16_7_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.6 Mobile/15E148 Safari/604.1",
       },
     })
       .then((response) => {
@@ -182,7 +183,7 @@ class Wmswebcontrol extends utils.Adapter {
             "content-type": "application/x-www-form-urlencoded",
             "accept-language": "de-de",
             "user-agent":
-              "Mozilla/5.0 (iPhone; CPU iPhone OS 12_5_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/12.1.2 Mobile/15E148 Safari/604.1",
+              "Mozilla/5.0 (iPhone; CPU iPhone OS 16_7_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.6 Mobile/15E148 Safari/604.1",
           },
           data:
             "client_id=devicecloud_wcpmobileapp&client_secret=nosecret&code=" +
@@ -198,9 +199,10 @@ class Wmswebcontrol extends utils.Adapter {
             this.aToken = response.data.access_token;
             this.rToken = response.data.refresh_token;
           })
-          .catch((error) => {
+          .catch(async (error) => {
             if (error.response.status === 400) {
               this.log.error("Login was not successful restart adapter");
+              await this.sleep(10000);
               this.restart();
             }
             error.response && this.log.error(JSON.stringify(error.response.data));
@@ -208,6 +210,11 @@ class Wmswebcontrol extends utils.Adapter {
             this.log.error(error);
           });
       });
+  }
+  async sleep(ms) {
+    return new Promise((resolve) => {
+      setTimeout(resolve, ms);
+    });
   }
   async refreshToken() {
     this.log.debug("refresh token");
