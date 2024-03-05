@@ -531,7 +531,7 @@ class Wmswebcontrol extends utils.Adapter {
     }
 
     this.log.debug(JSON.stringify(this.deviceList));
-    this.getDeviceStatus().catch(() => {
+    await this.getDeviceStatus().catch(() => {
       this.log.error("Get device status failed");
     });
   }
@@ -551,7 +551,7 @@ class Wmswebcontrol extends utils.Adapter {
       });
 
       this.log.debug(JSON.stringify(resultData.response));
-      this.json2iob.parse(element.name, resultData.response, { forceIndex: true, states: this.states, write: true });
+      await this.json2iob.parse(element.name, resultData.response, { forceIndex: true, states: this.states, write: true });
     }
   }
   async setDeviceStatus(device, key, value) {
@@ -745,17 +745,21 @@ class Wmswebcontrol extends utils.Adapter {
           });
           const index = id.slice(-1);
           const parameterState = await this.getStateAsync(pre + ".parameterType" + index);
-          let value = state.val;
-          if (parameterState.val === 55) {
-            value = parseInt(state.val, 16) * 2;
+          if (parameterState && state && state.val) {
+            let value = state.val;
+            if (parameterState.val === 55) {
+              value = parseInt(state.val, 16) * 2;
+            }
+            if (parameterState.val === 12) {
+              value = state.val / 2;
+            }
+            if (parameterState.val === 13) {
+              value = state.val - 127;
+            }
+            this.setState(id + "Convert", value, true);
+          } else {
+            this.log.debug("No parameterType found: " + pre + ".parameterType" + index);
           }
-          if (parameterState.val === 12) {
-            value = state.val / 2;
-          }
-          if (parameterState.val === 13) {
-            value = state.val - 127;
-          }
-          this.setState(id + "Convert", value, true);
         }
       }
     } else {
