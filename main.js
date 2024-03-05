@@ -29,9 +29,6 @@ class Wmswebcontrol extends utils.Adapter {
     this.cookieJar = new tough.CookieJar();
     this.requestClient = axios.create({
       withCredentials: true,
-      httpsAgent: new HttpsCookieAgent({
-        cookies: { jar: this.cookieJar },
-      }),
     });
     this.json2iob = new Json2iob(this);
     this.aToken = "";
