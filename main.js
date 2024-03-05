@@ -183,7 +183,6 @@ class Wmswebcontrol extends utils.Adapter {
       await this.getDeviceInfo();
 
       await this.getDeviceList();
-      await this.getDeviceStatus();
       this.appUpdateInterval = setInterval(async () => {
         await this.getDeviceStatus();
       }, this.config.interval * 60 * 1000);
@@ -523,8 +522,6 @@ class Wmswebcontrol extends utils.Adapter {
           type: "device",
           common: {
             name: elementSerial.toString(),
-            role: "indicator",
-            type: "mixed",
             write: false,
             read: true,
           },
@@ -542,7 +539,7 @@ class Wmswebcontrol extends utils.Adapter {
     this.log.debug("get device status");
     for (const element of this.deviceList) {
       this.log.debug("get status of: " + element.id);
-      const resultData = this.genericPostMessage("manualCommandRequest", {
+      const resultData = await this.genericPostMessage("manualCommandRequest", {
         serialNumber: element.id,
         functionCode: 0,
         setting0: 255,
