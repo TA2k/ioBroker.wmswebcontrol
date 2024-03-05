@@ -747,7 +747,7 @@ class Wmswebcontrol extends utils.Adapter {
           });
           const index = id.slice(-1);
           const parameterState = await this.getStateAsync(pre + ".parameterType" + index);
-          if (parameterState && state && state.val) {
+          if (parameterState) {
             let value = state.val;
             if (parameterState.val === 55) {
               value = parseInt(state.val, 16) * 2;
@@ -758,7 +758,7 @@ class Wmswebcontrol extends utils.Adapter {
             if (parameterState.val === 13) {
               value = state.val - 127;
             }
-            this.setState(id + "Convert", value, true);
+            await this.setStateAsync(id + "Convert", value, true);
           } else {
             this.log.debug("No parameterType found: " + pre + ".parameterType" + index);
           }
