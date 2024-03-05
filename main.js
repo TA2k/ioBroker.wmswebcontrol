@@ -466,6 +466,7 @@ class Wmswebcontrol extends utils.Adapter {
     data[key] = value;
     await this.genericPostMessage("manualCommandRequest", data)
       .then((result) => {
+        this.log.debug("set status with result:");
         this.log.debug(JSON.stringify(result.response));
         // this.extractKeys(this, device.name, result.response, true);
         this.waitTimeout = setTimeout(() => {
@@ -482,7 +483,8 @@ class Wmswebcontrol extends utils.Adapter {
             });
         }, 5000);
       })
-      .catch(() => {
+      .catch((error) => {
+        this.log.error(error);
         this.log.error("set status failed");
       });
   }
