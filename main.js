@@ -477,88 +477,84 @@ class Wmswebcontrol extends utils.Adapter {
     //   });
   }
   async getDeviceList() {
-    await this.genericPostMessage("mb8Read", {
+    const resultData = await this.genericPostMessage("mb8Read", {
       address: 0,
       block: 42,
       eui: parseInt(this.webControlId),
       length: 12800,
-    })
-      .then(async (result) => {
-        if (!result) {
-          this.log.error("Get DevicesList failed");
-          return;
-        }
-        this.log.debug(JSON.stringify(result.response));
-        result = Buffer.from(result.response.data, "base64");
-        const deviceArray = result.toString("hex").match(/(.{1,128})/g);
-        if (!deviceArray) {
-          this.log.error("No devices found");
+    }).catch((error) => {
+      this.log.error("Get DevicesList failed");
+      if (error) {
+        error.response && this.log.error(JSON.stringify(error.response.data));
+        this.log.error(error);
+      }
+    });
 
-          return;
-        }
-        for (const element of deviceArray) {
-          let elementArray = element.split("ffffffffffff");
-          if (!elementArray[1]) {
-            elementArray = element.split("ffffff");
-          }
-          if (!elementArray[1]) {
-            this.log.debug("Skip: " + element);
-            return;
-          }
-          const elementSerial = Buffer.from(elementArray[0].substring(0, 8), "hex").readInt32LE();
-          const elementName = Buffer.from(elementArray[1], "hex")
-            .toString("latin1")
-            .replace(/\u0000/g, "")
-            .replace(/ /g, "")
-            .replace(/\./g, "");
-          if (elementSerial != 0) {
-            this.deviceList.push({ id: elementSerial, name: elementName });
-            await this.setObjectNotExistsAsync(elementName, {
-              type: "device",
-              common: {
-                name: elementSerial.toString(),
-                role: "indicator",
-                type: "mixed",
-                write: false,
-                read: true,
-              },
-              native: {},
-            });
-          }
-        }
+    if (!resultData) {
+      this.log.error("Get DevicesList failed");
+      return;
+    }
+    this.log.debug(JSON.stringify(resultData.response));
+    const result = Buffer.from(resultData.response.data, "base64");
+    const deviceArray = result.toString("hex").match(/(.{1,128})/g);
+    if (!deviceArray) {
+      this.log.error("No devices found");
 
-        this.log.debug(JSON.stringify(this.deviceList));
-        this.getDeviceStatus().catch(() => {
-          this.log.error("Get device status failed");
+      return;
+    }
+    for (const element of deviceArray) {
+      let elementArray = element.split("ffffffffffff");
+      if (!elementArray[1]) {
+        elementArray = element.split("ffffff");
+      }
+      if (!elementArray[1]) {
+        this.log.debug("Skip: " + element);
+        return;
+      }
+      const elementSerial = Buffer.from(elementArray[0].substring(0, 8), "hex").readInt32LE();
+      const elementName = Buffer.from(elementArray[1], "hex")
+        .toString("latin1")
+        .replace(/\u0000/g, "")
+        .replace(/ /g, "")
+        .replace(/\./g, "");
+      if (elementSerial != 0) {
+        this.deviceList.push({ id: elementSerial, name: elementName });
+        await this.setObjectNotExistsAsync(elementName, {
+          type: "device",
+          common: {
+            name: elementSerial.toString(),
+            role: "indicator",
+            type: "mixed",
+            write: false,
+            read: true,
+          },
+          native: {},
         });
-      })
-      .catch((error) => {
-        this.log.error("Get DevicesList failed");
-        if (error) {
-          error.response && this.log.error(JSON.stringify(error.response.data));
-          this.log.error(error);
-        }
-      });
+      }
+    }
+
+    this.log.debug(JSON.stringify(this.deviceList));
+    this.getDeviceStatus().catch(() => {
+      this.log.error("Get device status failed");
+    });
   }
   async getDeviceStatus() {
     this.log.debug("get device status");
     for (const element of this.deviceList) {
       this.log.debug("get status of: " + element.id);
-      this.genericPostMessage("manualCommandRequest", {
+      const resultData = this.genericPostMessage("manualCommandRequest", {
         serialNumber: element.id,
         functionCode: 0,
         setting0: 255,
         setting1: 255,
         setting2: 255,
         setting3: 255,
-      })
-        .then((result) => {
-          this.log.debug(JSON.stringify(result.response));
-          this.json2iob.parse(element.name, result.response, { forceIndex: true, states: this.states, write: true });
-        })
-        .catch(() => {
-          this.log.error("Get device status failed");
-        });
+      }).catch(() => {
+        this.log.error("Get device status failed");
+      });
+
+      this.log.debug(JSON.stringify(resultData.response));
+      this.json2iob.parse(element.name, resultData.response, { forceIndex: true, states: this.states, write: true });
     }
   }
   async setDeviceStatus(device, key, value) {
@@ -617,8 +613,8 @@ class Wmswebcontrol extends utils.Adapter {
       this.webControlId +
       "/postMessage/";
     const data = JSON.stringify({ action: action, parameters: parameter, changeIds: [] });
-    this.log.debug(url);
-    this.log.debug(data);
+    this.log.debug("request: " + url);
+    this.log.debug("data: " + data);
     return await got
       .post(url, {
         http2: true,
@@ -634,7 +630,6 @@ class Wmswebcontrol extends utils.Adapter {
       .json()
       .then((res) => {
         this.log.debug(JSON.stringify(res.body));
-
         return res.body;
       })
       .catch((error) => {
