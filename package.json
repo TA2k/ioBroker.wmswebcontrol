@@ -1,6 +1,6 @@
 {
     "name": "iobroker.wmswebcontrol",
-    "version": "0.0.8",
+    "version": "0.0.9",
     "description": "Adapter for Warema WMS Webcontrol Pro",
     "author": {
         "name": "TA2k",
