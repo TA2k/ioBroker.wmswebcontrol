@@ -500,24 +500,21 @@ class Wmswebcontrol extends utils.Adapter {
     const data = JSON.stringify({ action: action, parameters: parameter, changeIds: [] });
     this.log.debug(url);
     this.log.debug(data);
-    return await this.requestClient({
-      method: "post",
-
-      withCredentials: true,
-      url: url,
-      headers: {
-        accept: "*/*",
-        "content-type": "application/json",
-        "user-agent": this.userAgent,
-        "accept-language": "de-DE;q=1",
-        authorization: "Bearer " + this.aToken,
-      },
-      data: data,
-    })
-      .then((response) => {
-        this.log.debug(JSON.stringify(response.data));
-        response.config && this.log.debug("Response:" + response.config.url);
-        return response.data;
+    return await got
+      .post(url, {
+        http2: true,
+        headers: {
+          accept: "*/*",
+          "content-type": "application/json",
+          "user-agent": this.userAgent,
+          "accept-language": "de-DE;q=1",
+          authorization: "Bearer " + this.aToken,
+        },
+        json: { action: action, parameters: parameter, changeIds: [] },
+      })
+      .then((res) => {
+        this.log.debug(JSON.stringify(res.body));
+        return res.body;
       })
       .catch((error) => {
         if (error.response.status === 401) {
@@ -543,6 +540,7 @@ class Wmswebcontrol extends utils.Adapter {
         error.response && this.log.error(JSON.stringify(error.response.data));
       });
   }
+
   getCodeChallenge() {
     this.code_verifier = this.randomString(64);
     const base64Digest = crypto.createHash("sha256").update(this.code_verifier).digest("base64");
