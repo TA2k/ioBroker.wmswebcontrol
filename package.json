@@ -16,6 +16,7 @@
         "url": "https://github.com/TA2k/ioBroker.wmswebcontrol"
     },
     "dependencies": {
+        "@esm2cjs/got": "^13.0.0",
         "@iobroker/adapter-core": "^3.0.4",
         "axios": "^1.6.7",
         "http-cookie-agent": "^5.0.4",

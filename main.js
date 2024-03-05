@@ -13,6 +13,7 @@ const tough = require("tough-cookie");
 const crypto = require("crypto");
 const qs = require("qs");
 const Json2iob = require("json2iob");
+const got = require("@esm2cjs/got").default;
 
 class Wmswebcontrol extends utils.Adapter {
   /**
@@ -248,11 +249,29 @@ class Wmswebcontrol extends utils.Adapter {
   }
   async getDeviceInfo() {
     this.log.info("get devices");
+    await got
+      .get("https://devicecloudservice.prod.devicecloud.warema.de/api/v1.0/devices", {
+        http2: true,
+        headers: {
+          Accept: "*/*",
+          "accept-encoding": "gzip, deflate, br",
+          "content-type": "application/x-www-form-urlencoded",
+          "user-agent": this.userAgent,
+          "accept-language": "de-DE;q=1",
+          authorization: "Bearer " + this.aToken,
+        },
+      })
+      .then((res) => {
+        this.log.debug(JSON.stringify(res.body));
+        this.log.info("Devices found: " + res.body.result.length);
+      })
+      .catch((error) => {
+        this.log.error(error);
+      });
     await axios({
       method: "get",
       url: "https://devicecloudservice.prod.devicecloud.warema.de/api/v1.0/devices",
       headers: {
-        host: "devicecloudservice.prod.devicecloud.warema.de",
         Accept: "*/*",
         "accept-encoding": "gzip, deflate, br",
         "content-type": "application/x-www-form-urlencoded",
