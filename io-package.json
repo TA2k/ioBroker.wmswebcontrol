@@ -1,9 +1,13 @@
 {
   "common": {
     "name": "wmswebcontrol",
-    "version": "0.1.0",
+    "version": "0.1.1",
     "title": "Warema WMS Webcontrol Pro",
     "news": {
+      "0.1.1": {
+        "en": "Fix for 0 Values",
+        "de": "Fix für 0 Werte"
+      },
       "0.1.0": {
         "en": "Fix Device Receiving",
         "de": "Fix Device Receiving"

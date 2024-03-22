@@ -1,6 +1,6 @@
 {
     "name": "iobroker.wmswebcontrol",
-    "version": "0.1.0",
+    "version": "0.1.1",
     "description": "Adapter for Warema WMS Webcontrol Pro",
     "author": {
         "name": "TA2k",
@@ -18,17 +18,17 @@
     "dependencies": {
         "@esm2cjs/got": "^13.0.0",
         "@iobroker/adapter-core": "^3.0.4",
-        "axios": "^1.6.7",
+        "axios": "^1.6.8",
         "http-cookie-agent": "^5.0.4",
         "json2iob": "^2.6.8",
-        "qs": "^6.11.2",
+        "qs": "^6.12.0",
         "tough-cookie": "^4.1.3"
     },
     "devDependencies": {
         "@iobroker/testing": "^4.1.1",
-        "@types/node": "^20.11.24",
+        "@types/node": "^20.11.30",
         "eslint": "^8.57.0",
-        "typescript": "^5.3.3"
+        "typescript": "^5.4.3"
     },
     "main": "main.js",
     "scripts": {

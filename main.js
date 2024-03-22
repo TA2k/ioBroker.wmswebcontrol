@@ -718,7 +718,7 @@ class Wmswebcontrol extends utils.Adapter {
           const trimmedID = id.replace("Convert", "");
           const index = trimmedID.slice(-1);
           const parameterState = await this.getStateAsync(pre + ".parameterType" + index);
-          if (parameterState && state && state.val) {
+          if (parameterState && state && state.val != null) {
             let value = state.val;
             if (parameterState.val === 55) {
               value = this.decimalToHex(state.val / 2);
