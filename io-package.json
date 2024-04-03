@@ -1,9 +1,13 @@
 {
   "common": {
     "name": "wmswebcontrol",
-    "version": "0.1.1",
+    "version": "0.1.2",
     "title": "Warema WMS Webcontrol Pro",
     "news": {
+      "0.1.2": {
+        "en": "Fix for no response crash",
+        "de": "Fix für Absturz bei fehlender Response"
+      },
       "0.1.1": {
         "en": "Fix for 0 Values",
         "de": "Fix für 0 Werte"

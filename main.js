@@ -551,9 +551,12 @@ class Wmswebcontrol extends utils.Adapter {
       }).catch(() => {
         this.log.error("Get device status failed");
       });
-
-      this.log.debug(JSON.stringify(resultData.response));
-      await this.json2iob.parse(element.name, resultData.response, { forceIndex: true, states: this.states, write: true });
+      if (resultData && resultData.response) {
+        this.log.debug(JSON.stringify(resultData.response));
+        await this.json2iob.parse(element.name, resultData.response, { forceIndex: true, states: this.states, write: true });
+      } else {
+        this.log.info("Get device status failed");
+      }
     }
   }
   async setDeviceStatus(device, key, value) {
