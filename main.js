@@ -558,6 +558,25 @@ class Wmswebcontrol extends utils.Adapter {
         this.log.info("Get device status failed");
       }
     }
+    //get sensors
+    const resultData = await this.genericPostMessage("sensorValueExportCurrent", {
+      connectionType: 1,
+      day: new Date().getDate(),
+      eui: 1278808,
+      month: new Date().getMonth() + 1,
+      sensorId: 255,
+      year: parseInt(new Date().getFullYear().toString().substring(2)),
+    }).catch((error) => {
+      this.log.debug("No Sensor data");
+      if (error) {
+        error.response && this.log.debug(JSON.stringify(error.response.data));
+        this.log.debug(error);
+      }
+    });
+    if (resultData && resultData.response) {
+      this.log.debug(JSON.stringify(resultData.response));
+      await this.json2iob.parse("sensors", resultData.response, { forceIndex: true, write: true });
+    }
   }
   async setDeviceStatus(device, key, value) {
     const data = { serialNumber: device.id, functionCode: 3 };
