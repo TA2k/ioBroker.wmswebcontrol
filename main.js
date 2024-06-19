@@ -654,6 +654,9 @@ class Wmswebcontrol extends utils.Adapter {
         return res;
       })
       .catch((error) => {
+        if (!error) {
+          return;
+        }
         if (error.response.status === 401) {
           this.log.debug("error 401");
           this.refreshToken()
