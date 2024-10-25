@@ -267,6 +267,7 @@ class Wmswebcontrol extends utils.Adapter {
     } catch (error) {
       this.log.error(response.data);
       this.log.error("Please check username and password");
+      this.log.error(error);
     }
     if (!url) {
       return;
@@ -517,8 +518,10 @@ class Wmswebcontrol extends utils.Adapter {
         return;
       }
       const elementSerial = Buffer.from(elementArray[0].substring(0, 8), "hex").readInt32LE();
+
       const elementName = Buffer.from(elementArray[1], "hex")
         .toString("latin1")
+        //eslint-disable-next-line
         .replace(/\u0000/g, "")
         .replace(/ /g, "")
         .replace(/\./g, "");
@@ -723,6 +726,7 @@ class Wmswebcontrol extends utils.Adapter {
       clearTimeout(this.waitTimeout);
       callback();
     } catch (e) {
+      this.log.error("onUnload: " + e);
       callback();
     }
   }
