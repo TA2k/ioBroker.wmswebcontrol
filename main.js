@@ -199,6 +199,7 @@ class Wmswebcontrol extends utils.Adapter {
     const [code_verifier, codeChallenge] = this.getCodeChallenge();
     const nonce = this.randomString(50);
     const state = this.randomString(50);
+    this.log.debug(`Start login with nonce: ${nonce} and state: ${state}`);
     let response = await this.requestClient({
       method: "get",
       url: "https://auth.warema.de/v1/connect/authorize",
@@ -230,6 +231,8 @@ class Wmswebcontrol extends utils.Adapter {
     }
     const tokenA = response.data.split('RequestVerificationToken" type="hidden" value="');
     const token = tokenA[1].split('" />')[0];
+    this.log.debug("Found Token: " + token);
+    this.log.debug("Path " + response.request.path);
     response = await this.requestClient({
       method: "post",
       withCredentials: true,
@@ -268,6 +271,7 @@ class Wmswebcontrol extends utils.Adapter {
     if (!url) {
       return;
     }
+    this.log.debug("Redirect to: " + url);
     await this.requestClient({
       method: "get",
       withCredentials: true,
@@ -284,7 +288,7 @@ class Wmswebcontrol extends utils.Adapter {
       })
       .catch(async (error) => {
         const parameters = qs.parse(error.request._options.query);
-
+        this.log.debug("parameters: " + JSON.stringify(error.request._options.query));
         this.log.debug("code: " + parameters.code);
         this.log.debug("code_verifier: " + code_verifier);
         this.log.debug("codeChallenge: " + codeChallenge);
