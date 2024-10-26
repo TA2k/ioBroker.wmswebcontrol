@@ -1,9 +1,22 @@
 {
   "common": {
     "name": "wmswebcontrol",
-    "version": "0.1.2",
+    "version": "0.1.3",
     "title": "Warema WMS Webcontrol Pro",
     "news": {
+      "0.1.3": {
+        "en": "fix login",
+        "de": "zurück zur übersicht",
+        "ru": "исправить логин",
+        "pt": "corrigir login",
+        "nl": "fix login",
+        "fr": "correction de la connexion",
+        "it": "fix login",
+        "es": "corrección de inicio",
+        "pl": "naprawić logowanie",
+        "uk": "фіксувати логін",
+        "zh-cn": "固定登录"
+      },
       "0.1.2": {
         "en": "Fix for no response crash",
         "de": "Fix für Absturz bei fehlender Response"
@@ -59,8 +72,12 @@
       "pl": "Adapter do Warema WMS Webcontrol Pro",
       "zh-cn": "Warema WMS Webcontrol Pro适配器"
     },
-    "authors": ["TA2k <tombox2020@gmail.com>"],
-    "keywords": ["Warema WMS Webcontrol Pro"],
+    "authors": [
+      "TA2k <tombox2020@gmail.com>"
+    ],
+    "keywords": [
+      "Warema WMS Webcontrol Pro"
+    ],
     "license": "MIT",
     "platform": "Javascript/Node.js",
     "icon": "wmswebcontrol.png",
@@ -90,8 +107,12 @@
       }
     ]
   },
-  "encryptedNative": ["password"],
-  "protectedNative": ["password"],
+  "encryptedNative": [
+    "password"
+  ],
+  "protectedNative": [
+    "password"
+  ],
   "native": {
     "user": "",
     "password": "",
