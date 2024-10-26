@@ -288,8 +288,10 @@ class Wmswebcontrol extends utils.Adapter {
         this.log.error(JSON.stringify(response.data));
       })
       .catch(async (error) => {
-        const parameters = qs.parse(error.request._options.query);
-        this.log.debug("_options: " + JSON.stringify(error.request._options));
+        let parameters = qs.parse(error.request._options.query);
+        if (!parameters.code) {
+          parameters = qs.parse(error.request._options.path.split("?")[1]);
+        }
         this.log.debug("parameters: " + JSON.stringify(error.request._options.query));
         this.log.debug("code: " + parameters.code);
         this.log.debug("code_verifier: " + code_verifier);
@@ -411,7 +413,7 @@ class Wmswebcontrol extends utils.Adapter {
                   authorization: "Bearer " + this.aToken,
                 },
                 json: { action: "info", changeIds: [] },
-              },
+              }
             )
             .json()
             .then((res) => {
