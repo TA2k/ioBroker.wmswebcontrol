@@ -289,6 +289,7 @@ class Wmswebcontrol extends utils.Adapter {
       })
       .catch(async (error) => {
         const parameters = qs.parse(error.request._options.query);
+        this.log.debug("_options: " + JSON.stringify(error.request._options));
         this.log.debug("parameters: " + JSON.stringify(error.request._options.query));
         this.log.debug("code: " + parameters.code);
         this.log.debug("code_verifier: " + code_verifier);
