@@ -413,7 +413,7 @@ class Wmswebcontrol extends utils.Adapter {
                   authorization: "Bearer " + this.aToken,
                 },
                 json: { action: "info", changeIds: [] },
-              }
+              },
             )
             .json()
             .then((res) => {
