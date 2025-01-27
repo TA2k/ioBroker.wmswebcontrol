@@ -32,6 +32,7 @@ class Wmswebcontrol extends utils.Adapter {
       withCredentials: true,
       httpsAgent: new HttpsCookieAgent({
         cookies: { jar: this.cookieJar },
+        rejectUnauthorized: false,
       }),
     });
     this.json2iob = new Json2iob(this);
