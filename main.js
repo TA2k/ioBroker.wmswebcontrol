@@ -376,6 +376,9 @@ class Wmswebcontrol extends utils.Adapter {
     await got
       .get("https://devicecloudservice.prod.devicecloud.warema.de/api/v1.0/devices", {
         http2: true,
+        https: {
+          rejectUnauthorized: false,
+        },
         headers: {
           Accept: "*/*",
           "accept-encoding": "gzip, deflate, br",
@@ -650,6 +653,9 @@ class Wmswebcontrol extends utils.Adapter {
     return await got
       .post(url, {
         http2: true,
+        https: {
+          rejectUnauthorized: false,
+        },
         headers: {
           accept: "*/*",
           "content-type": "application/json",
