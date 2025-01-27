@@ -1,9 +1,22 @@
 {
   "common": {
     "name": "wmswebcontrol",
-    "version": "0.1.3",
+    "version": "0.1.4",
     "title": "Warema WMS Webcontrol Pro",
     "news": {
+      "0.1.4": {
+        "en": "ignore certificate errors",
+        "de": "benachrichtigung von zertifikatsfehlern",
+        "ru": "игнорировать ошибки сертификата",
+        "pt": "ignorar erros de certificado",
+        "nl": "certificaatfouten negeren",
+        "fr": "ignorer les erreurs de certificat",
+        "it": "ignorare gli errori del certificato",
+        "es": "ignorar errores de certificado",
+        "pl": "ignorować błędy certyfikatu",
+        "uk": "ігнорувати помилки сертифіката",
+        "zh-cn": "忽略证书错误"
+      },
       "0.1.3": {
         "en": "fix login",
         "de": "zurück zur übersicht",
@@ -34,18 +47,6 @@
       },
       "0.0.5": {
         "en": "Bugfixes"
-      },
-      "0.0.4": {
-        "en": "initial release",
-        "de": "Erstveröffentlichung",
-        "ru": "Начальная версия",
-        "pt": "lançamento inicial",
-        "nl": "Eerste uitgave",
-        "fr": "Première version",
-        "it": "Versione iniziale",
-        "es": "Versión inicial",
-        "pl": "Pierwsze wydanie",
-        "zh-cn": "首次出版"
       }
     },
     "titleLang": {
