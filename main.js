@@ -562,17 +562,18 @@ class Wmswebcontrol extends utils.Adapter {
         setting1: 255,
         setting2: 255,
         setting3: 255,
-      }).catch(() => {
-        this.log.error("Get device status failed");
       });
       if (resultData && resultData.response) {
+        this.setState("info.connection", true, true);
         this.log.debug(JSON.stringify(resultData.response));
         await this.json2iob.parse(element.name, resultData.response, { forceIndex: true, states: this.states, write: true });
       } else {
-        this.log.info("Get device status failed");
+        this.log.info("Get device status failed because response is empty");
+        this.setState("info.connection", false, true);
       }
     }
     //get sensors
+    this.log.debug("get sensor status");
     const resultData = await this.genericPostMessage("sensorValueExportCurrent", {
       connectionType: 1,
       day: new Date().getDate(),
@@ -593,6 +594,7 @@ class Wmswebcontrol extends utils.Adapter {
     }
   }
   async setDeviceStatus(device, key, value) {
+    this.log.debug("set status of: " + device.id + " key: " + key + " value: " + value);
     const data = { serialNumber: device.id, functionCode: 3 };
 
     const setting0 = await this.getStateAsync(device.name + ".setting0");
@@ -618,17 +620,11 @@ class Wmswebcontrol extends utils.Adapter {
         result.response && this.log.debug(JSON.stringify(result.response));
         // this.extractKeys(this, device.name, result.response, true);
         this.waitTimeout = setTimeout(() => {
-          this.getDeviceStatus()
-            .then(() => {
-              this.waitTimeout = setTimeout(() => {
-                this.getDeviceStatus().catch(() => {
-                  this.log.error("Get device status failed");
-                });
-              }, 15000);
-            })
-            .catch(() => {
-              this.log.error("Get device status failed");
-            });
+          this.getDeviceStatus().then(() => {
+            this.waitTimeout = setTimeout(() => {
+              this.getDeviceStatus();
+            }, 15000);
+          });
         }, 5000);
       })
       .catch((error) => {
