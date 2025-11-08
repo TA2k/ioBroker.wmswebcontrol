@@ -86,6 +86,7 @@
     "extIcon": "https://raw.githubusercontent.com/TA2k/ioBroker.wmswebcontrol/master/admin/wmswebcontrol.png",
     "readme": "https://github.com/TA2k/ioBroker.wmswebcontrol/blob/master/README.md",
     "loglevel": "info",
+    "tier": 2,
     "mode": "daemon",
     "type": "iot-systems",
     "compact": true,
