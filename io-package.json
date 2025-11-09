@@ -79,7 +79,10 @@
     "keywords": [
       "Warema WMS Webcontrol Pro"
     ],
-    "license": "MIT",
+    "licenseInformation": {
+      "type": "free",
+      "license": "MIT"
+    },
     "platform": "Javascript/Node.js",
     "icon": "wmswebcontrol.png",
     "enabled": true,
