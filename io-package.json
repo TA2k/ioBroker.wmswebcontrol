@@ -2,7 +2,6 @@
   "common": {
     "name": "wmswebcontrol",
     "version": "0.1.4",
-    "title": "Warema WMS Webcontrol Pro",
     "news": {
       "0.1.4": {
         "en": "ignore certificate errors",
