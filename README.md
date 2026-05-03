@@ -45,6 +45,8 @@ Hint: The password which is set in adapter settings shall not have special chara
 
 - (TA2k) initial release
 
+[Older changelogs can be found there](CHANGELOG_OLD.md)
+
 ## License
 
 MIT License
