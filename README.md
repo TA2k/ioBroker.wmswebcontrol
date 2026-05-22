@@ -29,6 +29,10 @@ To control your device change the \*Convert values.
 Hint: The password which is set in adapter settings shall not have special characters.
 
 ## Changelog
+
+### **WORK IN PROGRESS**
+- (ioBroker-Bot) Adapter requires js-controller >= 6.0.11 now.
+
 ### 0.1.4 (2025-01-27)
 
 - ignore certificate errors
