@@ -13,7 +13,25 @@ const tough = require("tough-cookie");
 const crypto = require("crypto");
 const os = require("os");
 const Json2iob = require("json2iob");
-const { CommonCommandClient, ACTION_TYPE } = require("./lib/commonCommandClient");
+const { CommonCommandClient, ACTION_TYPE, ACTION_DESC } = require("./lib/commonCommandClient");
+
+// Readable object names per actionDescription for the level (Percentage/Rotation) and
+// Switch actions. A destination can expose several actions of the same type (e.g. an awning
+// with a separate valance drive), so the name comes from the description, not the type. The
+// protocol itself keys off actionType; these maps only make the object tree legible.
+const PERCENTAGE_NAME = {
+  [ACTION_DESC.AWNING_DRIVE]: "position",
+  [ACTION_DESC.SLAT_DRIVE]: "position",
+  [ACTION_DESC.ROLLER_SHUTTER_BLIND_DRIVE]: "position",
+  [ACTION_DESC.VALANCE_DRIVE]: "valance",
+  [ACTION_DESC.WINDOW_DRIVE]: "window",
+  [ACTION_DESC.LIGHT_DIMMING]: "dimming",
+  [ACTION_DESC.LOAD_DIMMING]: "loadDimming",
+};
+const SWITCH_NAME = {
+  [ACTION_DESC.LIGHT_SWITCH]: "light",
+  [ACTION_DESC.LOAD_SWITCH]: "load",
+};
 
 class Wmswebcontrol extends utils.Adapter {
   /**
@@ -89,6 +107,9 @@ class Wmswebcontrol extends utils.Adapter {
     this.wantsLocal = false;
     // Guards against overlapping poll cycles when a poll runs longer than the interval.
     this.polling = false;
+    // Set in onUnload so an async setup that started before shutdown does not publish a
+    // client or object tree after the adapter has been told to stop.
+    this.unloaded = false;
     this.states = {
       textIndexDrivingCause: {
         498: "Heartbeat Sicherheitskontakt",
@@ -241,15 +262,29 @@ class Wmswebcontrol extends utils.Adapter {
     // controller is reachable. Fall back to the legacy postMessage/mb8 cloud tree only
     // when the controller cannot be reached on the LAN at all.
     await this.setupCommonCommand();
+    // setupCommonCommand can abort on unload (leaving this.cc null); do not then build the
+    // legacy cloud tree after the adapter has already been unloaded.
+    if (this.unloaded) {
+      return;
+    }
     if (!this.cc && this.aToken) {
       await this.getDeviceList();
       await this.getSceneList();
       await this.getChannelList();
     }
 
-    if (this.aToken || this.cc || this.wantsLocal) {
+    if (!this.unloaded && (this.aToken || this.cc || this.wantsLocal)) {
       await this.sleep(5000);
+      // Setup may have been slow; if the adapter was unloaded meanwhile, do not start polling.
+      if (this.unloaded) {
+        return;
+      }
       await this.pollStatus();
+      // The initial poll is another await where an unload can land; do not create an interval
+      // the cleared onUnload would no longer know about.
+      if (this.unloaded) {
+        return;
+      }
       this.appUpdateInterval = setInterval(async () => {
         await this.pollStatus();
       }, this.config.interval * 60 * 1000);
@@ -951,126 +986,309 @@ class Wmswebcontrol extends utils.Adapter {
       if (host) {
         this.log.info("Local controller at " + host + " not reachable, using cloud fallback");
       }
+      client.stop();
+      return;
+    }
+    // The adapter may have been unloaded while the ping was in flight; do not publish a
+    // client or build a tree after shutdown.
+    if (this.unloaded) {
+      client.stop();
+      return;
+    }
+    // Build the tree on the local client and only publish it as this.cc on success, so a
+    // failed or aborted build never leaves a half-initialized client active. A build that
+    // throws (e.g. an object write is rejected) must not escape setup: stop the temporary
+    // client and let the caller fall back to the legacy cloud tree.
+    let built = false;
+    try {
+      built = await this.buildCommonCommandTree(client);
+    } catch (error) {
+      this.log.error("Local commonCommand tree build failed: " + (error && error.message));
+    }
+    if (!built || this.unloaded) {
+      client.stop();
       return;
     }
     this.cc = client;
     this.log.info("Local controller reachable at " + host + ", using commonCommand (local preferred)");
-    await this.buildCommonCommandTree();
   }
 
   /**
-   * Read the local getConfiguration and create the local.* object tree: one channel per
-   * destination with position/slatAngle/stop states depending on the actions it exposes,
-   * plus status states, and one button per scene. The tree is driven over whichever
-   * commonCommand transport is currently available.
+   * Map a raw getConfiguration action to an object-tree state descriptor, or null when the
+   * action type is not modeled. The parameter and status value keys come from the
+   * commonCommand action wire format (percentage / rotation / onOffState); Stop, Toggle,
+   * Impulse and Identify carry no parameters. Enumeration and Unknown are skipped because
+   * their parameter shape is not established.
+   * The returned base is the preferred (pre-uniqueness) state name; the caller assigns the
+   * final stateName order-independently across the destination's actions.
+   * @param {{id: number, actionType: number, actionDescription: number, minValue?: number, maxValue?: number}} action
+   * @returns {{id: number, base: string, stateName: string, kind: string, paramKey: string|null, readKey: string|null, clampMin: number|null, clampMax: number|null, common: ioBroker.StateCommon}|null}
    */
-  async buildCommonCommandTree() {
+  describeAction(action) {
+    const type = action.actionType;
+    const desc = action.actionDescription;
+    const min = action.minValue != null ? action.minValue : null;
+    const max = action.maxValue != null ? action.maxValue : null;
+    let base;
+    /** @type {ioBroker.StateCommon} */
+    let common;
+    /** @type {string|null} */
+    let paramKey = null;
+    /** @type {string|null} */
+    let readKey = null;
+    let kind;
+    /** @type {number|null} */
+    let clampMin = null;
+    /** @type {number|null} */
+    let clampMax = null;
+    switch (type) {
+      case ACTION_TYPE.PERCENTAGE: {
+        base = PERCENTAGE_NAME[desc] || "position";
+        kind = "level";
+        paramKey = "percentage";
+        readKey = "percentage";
+        clampMin = 0;
+        clampMax = 100;
+        const dimmer = desc === ACTION_DESC.LIGHT_DIMMING || desc === ACTION_DESC.LOAD_DIMMING;
+        common = { name: "Target position", role: dimmer ? "level.dimmer" : "level.blind", type: "number", unit: "%", min: 0, max: 100, write: true, read: true };
+        break;
+      }
+      case ACTION_TYPE.PERCENTAGE_DELTA: {
+        base = (PERCENTAGE_NAME[desc] || "position") + "Delta";
+        kind = "level";
+        paramKey = "percentage";
+        // A delta action's own limits are relative bounds; use them directly when present.
+        clampMin = min != null ? min : -100;
+        clampMax = max != null ? max : 100;
+        common = { name: "Relative position change", role: "level", type: "number", unit: "%", min: clampMin, max: clampMax, write: true, read: false };
+        break;
+      }
+      case ACTION_TYPE.ROTATION: {
+        base = desc === ACTION_DESC.SLAT_ROTATE ? "slatAngle" : "rotation";
+        kind = "level";
+        paramKey = "rotation";
+        readKey = "rotation";
+        clampMin = min != null ? min : -127;
+        clampMax = max != null ? max : 127;
+        common = { name: "Target slat angle", role: "level.tilt", type: "number", min: clampMin, max: clampMax, write: true, read: true };
+        break;
+      }
+      case ACTION_TYPE.ROTATION_DELTA: {
+        base = (desc === ACTION_DESC.SLAT_ROTATE ? "slatAngle" : "rotation") + "Delta";
+        kind = "level";
+        paramKey = "rotation";
+        // A delta action's own limits are relative bounds; use them directly when present.
+        clampMin = min != null ? min : -127;
+        clampMax = max != null ? max : 127;
+        common = { name: "Relative slat angle change", role: "level", type: "number", min: clampMin, max: clampMax, write: true, read: false };
+        break;
+      }
+      case ACTION_TYPE.SWITCH: {
+        base = SWITCH_NAME[desc] || "switch";
+        kind = "switch";
+        paramKey = "onOffState";
+        readKey = "onOffState";
+        common = { name: "On/off", role: desc === ACTION_DESC.LIGHT_SWITCH ? "switch.light" : "switch", type: "boolean", write: true, read: true };
+        break;
+      }
+      case ACTION_TYPE.TOGGLE: {
+        base = desc === ACTION_DESC.LIGHT_TOGGLE ? "lightToggle" : desc === ACTION_DESC.LAST_TOGGLE ? "lastToggle" : "toggle";
+        kind = "button";
+        common = { name: "Toggle", role: "button", type: "boolean", write: true, read: false };
+        break;
+      }
+      case ACTION_TYPE.STOP: {
+        base = "stop";
+        kind = "button";
+        common = { name: "Stop movement", role: "button.stop", type: "boolean", write: true, read: false };
+        break;
+      }
+      case ACTION_TYPE.IMPULSE: {
+        base = "impulse";
+        kind = "button";
+        common = { name: "Impulse", role: "button", type: "boolean", write: true, read: false };
+        break;
+      }
+      case ACTION_TYPE.IDENTIFY: {
+        base = "identify";
+        kind = "button";
+        common = { name: "Identify", role: "button", type: "boolean", write: true, read: false };
+        break;
+      }
+      default:
+        this.log.debug("commonCommand: unsupported actionType " + type + " (description " + desc + ") skipped");
+        return null;
+    }
+    return { id: action.id, base: base, stateName: "", kind: kind, paramKey: paramKey, readKey: readKey, clampMin: clampMin, clampMax: clampMax, common: common };
+  }
+
+  /**
+   * Assign a stable, order-independent, collision-free name to each item. A friendly bare
+   * base name is kept only when it is unique among the items, not reserved, and does not equal
+   * any item's qualified "base_id" form; every other item takes its qualified name. Because
+   * ids are unique, qualified names never collide, so each item's name is a pure function of
+   * the item set and does not depend on the order the controller reported them in. That keeps
+   * object ids stable across rebuilds, so an existing automation never ends up pointing at a
+   * different device.
+   * @param {{base: string, id: number}[]} items
+   * @param {Set<string>} reserved names that must not be taken as a bare name (e.g. a shared namespace)
+   * @returns {string[]} the chosen name for each item, in the same order
+   */
+  assignUniqueNames(items, reserved) {
+    /** @type {Map<string, number>} */
+    const baseCounts = new Map();
+    const qualifiedNames = new Set();
+    for (const item of items) {
+      baseCounts.set(item.base, (baseCounts.get(item.base) || 0) + 1);
+      qualifiedNames.add(item.base + "_" + item.id);
+    }
+    return items.map((item) => {
+      const bareIsUnique = baseCounts.get(item.base) === 1 && !reserved.has(item.base) && !qualifiedNames.has(item.base);
+      return bareIsUnique ? item.base : item.base + "_" + item.id;
+    });
+  }
+
+  /**
+   * Read the local getConfiguration and create the local.* object tree on the given client:
+   * one channel per destination with a state per modeled action (position/slatAngle/switch/
+   * stop/identify/...), plus status states, and one button per scene. Returns false when the
+   * configuration could not be read, so the caller does not publish the client.
+   * @param {InstanceType<typeof CommonCommandClient>} client
+   * @returns {Promise<boolean>}
+   */
+  /**
+   * setObjectNotExists that stops when the adapter is unloading, so a build racing shutdown
+   * does not keep creating objects.
+   * @param {string} objId
+   * @param {ioBroker.SettableObject} obj
+   * @returns {Promise<boolean>} false when the adapter was unloaded (caller must abort the build)
+   */
+  async ccSetObject(objId, obj) {
+    if (this.unloaded) {
+      return false;
+    }
+    await this.setObjectNotExistsAsync(objId, obj);
+    return true;
+  }
+
+  async buildCommonCommandTree(client) {
     let config;
     try {
-      config = await this.cc.getConfiguration();
+      config = await client.getConfiguration();
     } catch (error) {
       this.log.error("Local getConfiguration failed: " + (error && error.message));
-      this.cc = null;
-      return;
+      return false;
     }
-    // Pre-count sanitized names so colliding destinations (e.g. "Blind 1" and "Blind.1"
-    // both sanitize to "Blind1") get a unique object folder instead of overwriting each
-    // other. Only collisions carry the id suffix, so unique names stay readable.
-    const destNameCounts = {};
-    for (const dest of (config && config.destinations) || []) {
-      const sane = this.sanitizeName(dest.names && dest.names[0]);
-      if (sane) {
-        destNameCounts[sane] = (destNameCounts[sane] || 0) + 1;
-      }
+    if (this.unloaded) {
+      // Adapter is shutting down; do not create objects.
+      return false;
     }
-    this.ccDestinations = [];
+    // Collect destination descriptors first so folder names can be assigned across all
+    // destinations at once (order-independent), before any object is created.
+    const destInputs = /** @type {{id: number, display: string, base: string, actions: NonNullable<ReturnType<Wmswebcontrol["describeAction"]>>[]}[]} */ ([]);
     for (const dest of (config && config.destinations) || []) {
       const display = (dest.names && dest.names[0]) || "";
       const sane = this.sanitizeName(display);
       if (!sane) {
         continue;
       }
-      const name = destNameCounts[sane] > 1 ? sane + "_" + dest.id : sane;
-      const actions = dest.actions || [];
-      const percentage = actions.find((entry) => entry.actionType === ACTION_TYPE.PERCENTAGE);
-      const rotation = actions.find((entry) => entry.actionType === ACTION_TYPE.ROTATION);
-      const stop = actions.find((entry) => entry.actionType === ACTION_TYPE.STOP);
-      const mapped = {
-        id: dest.id,
-        name: name,
-        position: percentage ? percentage.id : null,
-        tilt: rotation ? { id: rotation.id, min: rotation.minValue != null ? rotation.minValue : -127, max: rotation.maxValue != null ? rotation.maxValue : 127 } : null,
-        stop: stop ? stop.id : null,
-      };
-      this.ccDestinations.push(mapped);
-      await this.setObjectNotExistsAsync("local." + name, {
+      const actions = /** @type {NonNullable<ReturnType<Wmswebcontrol["describeAction"]>>[]} */ ([]);
+      for (const action of dest.actions || []) {
+        const meta = this.describeAction(action);
+        if (meta) {
+          actions.push(meta);
+        }
+      }
+      destInputs.push({ id: dest.id, display: display, base: sane, actions: actions });
+    }
+    // Reserve the scenes namespace so a destination named "scenes" cannot collide with the
+    // scene buttons (dispatch routes local.scenes.* to scene execution).
+    const usedDestNames = new Set(["scenes"]);
+    const destNames = this.assignUniqueNames(destInputs, usedDestNames);
+    const destinations = [];
+    for (let i = 0; i < destInputs.length; i++) {
+      const input = destInputs[i];
+      const name = destNames[i];
+      // Reserve the fixed status state names, then assign one order-independent state name
+      // per action on this destination.
+      const usedStates = new Set(["drivingCause", "heartbeatError", "blocking"]);
+      const stateNames = this.assignUniqueNames(input.actions, usedStates);
+      for (let j = 0; j < input.actions.length; j++) {
+        input.actions[j].stateName = stateNames[j];
+      }
+      const mapped = { id: input.id, name: name, actions: input.actions };
+      destinations.push(mapped);
+      if (!(await this.ccSetObject("local." + name, {
         type: "channel",
-        common: { name: display || name },
+        common: { name: input.display || name },
         native: {},
-      });
-      if (mapped.position != null) {
-        await this.setObjectNotExistsAsync("local." + name + ".position", {
-          type: "state",
-          common: { name: "Target position", role: "level.blind", type: "number", unit: "%", min: 0, max: 100, write: true, read: true },
-          native: {},
-        });
+      }))) {
+        return false;
       }
-      if (mapped.tilt) {
-        await this.setObjectNotExistsAsync("local." + name + ".slatAngle", {
+      for (const meta of mapped.actions) {
+        if (!(await this.ccSetObject("local." + name + "." + meta.stateName, {
           type: "state",
-          common: { name: "Target slat angle", role: "level.tilt", type: "number", min: mapped.tilt.min, max: mapped.tilt.max, write: true, read: true },
+          common: meta.common,
           native: {},
-        });
+        }))) {
+          return false;
+        }
       }
-      if (mapped.stop != null) {
-        await this.setObjectNotExistsAsync("local." + name + ".stop", {
-          type: "state",
-          common: { name: "Stop movement", role: "button", type: "boolean", write: true, read: false },
-          native: {},
-        });
-      }
-      await this.setObjectNotExistsAsync("local." + name + ".drivingCause", {
+      if (!(await this.ccSetObject("local." + name + ".drivingCause", {
         type: "state",
         // Local reports a numeric code, the cloud fallback a string enum, so accept both.
         common: { name: "Driving cause", role: "value", type: "mixed", write: false, read: true },
         native: {},
-      });
-      await this.setObjectNotExistsAsync("local." + name + ".heartbeatError", {
+      }))) {
+        return false;
+      }
+      if (!(await this.ccSetObject("local." + name + ".heartbeatError", {
         type: "state",
         common: { name: "Heartbeat error", role: "indicator", type: "boolean", write: false, read: true },
         native: {},
-      });
-      await this.setObjectNotExistsAsync("local." + name + ".blocking", {
+      }))) {
+        return false;
+      }
+      if (!(await this.ccSetObject("local." + name + ".blocking", {
         type: "state",
         common: { name: "Blocking", role: "indicator", type: "boolean", write: false, read: true },
         native: {},
-      });
-    }
-    // Same collision guard for scenes as for destinations.
-    const sceneNameCounts = {};
-    for (const scene of (config && config.scenes) || []) {
-      const sane = this.sanitizeName(scene.names && scene.names[0]);
-      if (sane) {
-        sceneNameCounts[sane] = (sceneNameCounts[sane] || 0) + 1;
+      }))) {
+        return false;
       }
     }
-    this.ccScenes = [];
+    const sceneInputs = /** @type {{id: number, display: string, base: string}[]} */ ([]);
     for (const scene of (config && config.scenes) || []) {
       const display = (scene.names && scene.names[0]) || "";
       const sane = this.sanitizeName(display);
       if (!sane) {
         continue;
       }
-      const name = sceneNameCounts[sane] > 1 ? sane + "_" + scene.id : sane;
-      this.ccScenes.push({ id: scene.id, name: name });
-      await this.setObjectNotExistsAsync("local.scenes." + name, {
-        type: "state",
-        common: { name: display || name, role: "button", type: "boolean", write: true, read: false },
-        native: {},
-      });
+      sceneInputs.push({ id: scene.id, display: display, base: sane });
     }
+    const usedSceneNames = new Set();
+    const sceneNames = this.assignUniqueNames(sceneInputs, usedSceneNames);
+    const scenes = [];
+    for (let i = 0; i < sceneInputs.length; i++) {
+      const input = sceneInputs[i];
+      const name = sceneNames[i];
+      scenes.push({ id: input.id, name: name });
+      if (!(await this.ccSetObject("local.scenes." + name, {
+        type: "state",
+        common: { name: input.display || name, role: "button", type: "boolean", write: true, read: false },
+        native: {},
+      }))) {
+        return false;
+      }
+    }
+    if (this.unloaded) {
+      return false;
+    }
+    this.ccDestinations = destinations;
+    this.ccScenes = scenes;
     this.log.debug("commonCommand destinations: " + JSON.stringify(this.ccDestinations));
     this.log.debug("commonCommand scenes: " + JSON.stringify(this.ccScenes));
+    return true;
   }
 
   /**
@@ -1108,12 +1326,21 @@ class Wmswebcontrol extends utils.Adapter {
       await this.setStateChangedAsync(base + ".blocking", { val: !!data.blocking, ack: true });
       for (const product of data.productData || []) {
         const value = product.value || {};
-        if (dest.position != null && product.actionId === dest.position && value.percentage != null) {
-          await this.setStateChangedAsync(base + ".position", { val: Math.round(value.percentage), ack: true });
+        const meta = dest.actions.find((entry) => entry.id === product.actionId && entry.readKey);
+        if (!meta) {
+          continue;
         }
-        if (dest.tilt && product.actionId === dest.tilt.id && value.rotation != null) {
-          await this.setStateChangedAsync(base + ".slatAngle", { val: value.rotation, ack: true });
+        const raw = value[meta.readKey];
+        if (raw == null) {
+          continue;
         }
+        let val = raw;
+        if (meta.readKey === "percentage") {
+          val = Math.round(raw);
+        } else if (meta.readKey === "onOffState") {
+          val = !!raw;
+        }
+        await this.setStateChangedAsync(base + "." + meta.stateName, { val: val, ack: true });
       }
     }
   }
@@ -1174,36 +1401,56 @@ class Wmswebcontrol extends utils.Adapter {
     if (!dest) {
       return;
     }
-    const command = idArray[idArray.length - 1];
-    const value = Number(state.val);
-    let actionId;
-    let parameters;
-    if (command === "stop" && dest.stop != null) {
-      actionId = dest.stop;
-      parameters = {};
-    } else if (command === "position" && dest.position != null && Number.isFinite(value)) {
-      actionId = dest.position;
-      parameters = { percentage: Math.max(0, Math.min(100, value)) };
-    } else if (command === "slatAngle" && dest.tilt && Number.isFinite(value)) {
-      actionId = dest.tilt.id;
-      parameters = { rotation: Math.max(dest.tilt.min, Math.min(dest.tilt.max, value)) };
-    }
-    if (actionId == null) {
+    const stateName = idArray[idArray.length - 1];
+    const meta = dest.actions.find((entry) => entry.stateName === stateName);
+    if (!meta) {
       return;
     }
+    let parameters = {};
+    /** @type {number|boolean|null} */
+    let ackVal = null;
+    if (meta.kind === "level") {
+      // Reject missing/blank values: Number(null), Number("") and Number("  ") are all 0,
+      // which would drive to position 0 (fully close/move) instead of being ignored.
+      if (state.val == null || (typeof state.val === "string" && state.val.trim() === "")) {
+        return;
+      }
+      const value = Number(state.val);
+      if (!Number.isFinite(value)) {
+        return;
+      }
+      const clamped = Math.max(meta.clampMin, Math.min(meta.clampMax, value));
+      parameters = { [meta.paramKey]: clamped };
+      ackVal = clamped;
+    } else if (meta.kind === "switch") {
+      // Only act on a recognized boolean; a missing/unknown value must not switch equipment off.
+      /** @type {boolean|null} */
+      let on = null;
+      if (state.val === true || state.val === 1 || state.val === "true" || state.val === "1") {
+        on = true;
+      } else if (state.val === false || state.val === 0 || state.val === "false" || state.val === "0") {
+        on = false;
+      }
+      if (on === null) {
+        return;
+      }
+      parameters = { [meta.paramKey]: on };
+      ackVal = on;
+    }
+    // Buttons (stop/toggle/impulse/identify) carry no parameters.
     let ok = false;
     try {
-      await this.cc.action([{ destinationId: dest.id, actionId: actionId, parameters: parameters }]);
+      await this.cc.action([{ destinationId: dest.id, actionId: meta.id, parameters: parameters }]);
       ok = true;
     } catch (error) {
-      this.log.error("Command failed for " + dest.name + " " + command + ": " + (error && error.message));
+      this.log.error("Command failed for " + dest.name + " " + stateName + ": " + (error && error.message));
     }
-    if (command === "stop") {
+    if (meta.kind === "button") {
+      // Reset the momentary button regardless of outcome.
       this.setState(id, false, true);
     } else if (ok) {
       // Acknowledge the value actually sent, not the raw (possibly out-of-range) input.
-      const sent = command === "position" ? parameters.percentage : command === "slatAngle" ? parameters.rotation : state.val;
-      this.setState(id, sent, true);
+      this.setState(id, ackVal, true);
     }
   }
 
@@ -1304,6 +1551,7 @@ class Wmswebcontrol extends utils.Adapter {
    */
   onUnload(callback) {
     try {
+      this.unloaded = true;
       this.setState("info.connection", false, true);
       this.cc && this.cc.stop();
       this.appUpdateInterval && clearInterval(this.appUpdateInterval);
@@ -1344,24 +1592,29 @@ class Wmswebcontrol extends utils.Adapter {
             const command = idArray[idArray.length - 1];
             const value = Number(state.val);
             let parameter;
+            /** @type {number|null} */
+            let ackVal = null;
             if (command === "stop") {
               parameter = { channel: channel.id, functionCode: 1 };
             } else if (command === "position" && Number.isFinite(value)) {
-              const position = Math.max(0, Math.min(100, value)) * 2;
-              parameter = { channel: channel.id, functionCode: 3, setting0: position, setting1: 255, setting2: 255, setting3: 255 };
+              const clamped = Math.max(0, Math.min(100, value));
+              ackVal = clamped;
+              parameter = { channel: channel.id, functionCode: 3, setting0: clamped * 2, setting1: 255, setting2: 255, setting3: 255 };
             } else if (command === "slatAngle" && Number.isFinite(value)) {
-              const angle = Math.max(-127, Math.min(127, value)) + 127;
-              parameter = { channel: channel.id, functionCode: 3, setting0: 255, setting1: angle, setting2: 255, setting3: 255 };
+              const clamped = Math.max(-127, Math.min(127, value));
+              ackVal = clamped;
+              parameter = { channel: channel.id, functionCode: 3, setting0: 255, setting1: clamped + 127, setting2: 255, setting3: 255 };
             }
             if (parameter) {
               const result = await this.genericPostMessage("channelCommandRequest", parameter, false);
               // Reset the momentary stop button; only acknowledge position/angle once
               // the command was actually accepted (genericPostMessage resolves the
-              // response on success, undefined on failure).
+              // response on success, undefined on failure), and with the clamped value
+              // that was actually sent, not the raw input.
               if (command === "stop") {
                 this.setState(id, false, true);
               } else if (result != null) {
-                this.setState(id, state.val, true);
+                this.setState(id, ackVal, true);
               }
             }
             return;

@@ -35,13 +35,20 @@ account (the local controller cannot be matched to a specific one otherwise).
 
 ### Local mode (commonCommand)
 
-When the controller is reachable, the adapter builds a `local.*` tree from its configuration:
+When the controller is reachable, the adapter builds a `local.*` tree from its configuration.
+Every controllable action of a device is exposed as its own state:
 
-- `local.<device>.position` - target position 0..100 % (writable).
+- `local.<device>.position` - target position 0..100 % (writable; awning/roller/slat drives).
+- `local.<device>.valance` - target position of a separate valance drive, if present (writable).
 - `local.<device>.slatAngle` - target slat angle, range per device (writable, blinds only).
+- `local.<device>.dimming` - brightness 0..100 % for dimmable lights (writable).
+- `local.<device>.light` / `.load` / `.switch` - on/off switch (writable).
 - `local.<device>.stop` - button, stops the current movement (writable).
+- `local.<device>.identify` - button, identifies the device (writable).
 - `local.<device>.drivingCause` / `.heartbeatError` / `.blocking` - status (read-only).
 - `local.scenes.<scene>` - button, runs the scene (writable).
+
+The exact set of states per device depends on the actions the controller reports for it.
 
 ### Cloud mode (legacy)
 
@@ -56,10 +63,12 @@ and channels. To control a channel change the `*Convert` values, e.g.:
 
 ## Changelog
 
-### **WORK IN PROGRESS**
+### 1.0.0 (2026-09-23)
 
 - add local commonCommand control (IP or auto-discovery), preferred over the cloud with a
   cloud fallback
+- expose every controllable action per device in the `local.*` tree (position, valance,
+  slat angle, dimming, switch, stop, identify) plus scenes
 - use axios for all HTTP calls, drop @esm2cjs/got
 - resolve service endpoints from the discovery service
 

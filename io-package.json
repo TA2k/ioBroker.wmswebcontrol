@@ -1,8 +1,21 @@
 {
   "common": {
     "name": "wmswebcontrol",
-    "version": "0.1.4",
+    "version": "1.0.0",
     "news": {
+      "1.0.0": {
+        "en": "New local mode: control the WMS controller directly on the LAN (IP or auto-discovery), preferred over the cloud with a cloud fallback. The local path is more stable because it does not depend on the Warema IoT hub.",
+        "de": "Neuer lokaler Modus: Steuerung des WMS-Controllers direkt im LAN (IP oder Auto-Discovery), bevorzugt vor der Cloud mit Cloud-Fallback. Der lokale Weg ist stabiler, weil er nicht vom Warema-IoT-Hub abhängt.",
+        "ru": "Новый локальный режим: управление контроллером WMS напрямую в локальной сети (IP или автообнаружение), предпочтительнее облака с резервным вариантом через облако.",
+        "pt": "Novo modo local: controle o controlador WMS diretamente na LAN (IP ou descoberta automática), preferido em relação à nuvem com recurso à nuvem.",
+        "nl": "Nieuwe lokale modus: bestuur de WMS-controller rechtstreeks op het LAN (IP of autodetectie), verkozen boven de cloud met een cloud-terugval.",
+        "fr": "Nouveau mode local : pilotez le contrôleur WMS directement sur le réseau local (IP ou découverte automatique), préféré au cloud avec repli sur le cloud.",
+        "it": "Nuova modalità locale: controlla il controller WMS direttamente sulla LAN (IP o rilevamento automatico), preferita al cloud con fallback sul cloud.",
+        "es": "Nuevo modo local: controla el controlador WMS directamente en la LAN (IP o autodescubrimiento), preferido frente a la nube con respaldo en la nube.",
+        "pl": "Nowy tryb lokalny: sterowanie kontrolerem WMS bezpośrednio w sieci LAN (IP lub autowykrywanie), preferowany zamiast chmury z awaryjnym trybem chmury.",
+        "uk": "Новий локальний режим: керування контролером WMS безпосередньо в локальній мережі (IP або автовиявлення), пріоритетніше за хмару з резервним хмарним варіантом.",
+        "zh-cn": "新的本地模式：直接在局域网中控制 WMS 控制器（IP 或自动发现），优先于云端并提供云端回退。"
+      },
       "0.1.4": {
         "en": "ignore certificate errors",
         "de": "benachrichtigung von zertifikatsfehlern",
@@ -82,6 +95,24 @@
         "zh-cn": "错误修复"
       }
     },
+    "messages": [
+      {
+        "condition": {
+          "operand": "and",
+          "rules": ["oldVersion<1.0.0", "newVersion>=1.0.0"]
+        },
+        "title": {
+          "en": "New local mode available",
+          "de": "Neuer lokaler Modus verfügbar"
+        },
+        "text": {
+          "en": "This version can control your WMS controller directly on the local network. The local mode is more stable than the cloud because it does not depend on the Warema IoT hub, so it is the recommended way to run the adapter. Set the controller IP under Local IP, or enable Auto-discovery, in the adapter settings. The cloud login stays as an automatic fallback.",
+          "de": "Diese Version kann den WMS-Controller direkt im lokalen Netzwerk steuern. Der lokale Modus ist stabiler als die Cloud, weil er nicht vom Warema-IoT-Hub abhängt, und ist daher der empfohlene Weg. Trage die Controller-IP unter „Local IP\" ein oder aktiviere „Auto-discovery\" in den Adapter-Einstellungen. Der Cloud-Login bleibt als automatischer Fallback erhalten."
+        },
+        "level": "info",
+        "buttons": ["ok"]
+      }
+    ],
     "titleLang": {
       "en": "Warema WMS Webcontrol Pro",
       "de": "Warema WMS Webcontrol Pro",
