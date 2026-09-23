@@ -949,8 +949,10 @@ class Wmswebcontrol extends utils.Adapter {
       }
     }
     if (!bases.size) {
+      this.log.debug("Auto-discovery: no non-internal IPv4 interface to scan");
       return null;
     }
+    this.log.debug("Auto-discovery scanning " + [...bases].map((b) => b + ".1-254").join(", ") + " (timeout 1s per host)");
     const probe = async (ip) => {
       try {
         const res = await this.requestClient({
@@ -1004,10 +1006,13 @@ class Wmswebcontrol extends utils.Adapter {
     // The poll self-heal calls this on every cycle; throttle the full LAN scan so a
     // controller that stays unreachable is not scanned for on every short poll tick.
     if (this.lastScanTs && Date.now() - this.lastScanTs < 120000) {
+      const wait = Math.ceil((120000 - (Date.now() - this.lastScanTs)) / 1000);
+      this.log.debug("Auto-discovery throttled; next LAN scan in " + wait + "s");
       return;
     }
     this.lastScanTs = Date.now();
     this.discovering = true;
+    this.log.info("Auto-discovery: scanning the LAN for the local controller");
     try {
       const found = await this.discoverLocalHost();
       if (found && !this.unloaded) {
@@ -1550,9 +1555,14 @@ class Wmswebcontrol extends utils.Adapter {
       // retry. maybeDiscoverLocal re-runs the scan when no host is known yet; otherwise
       // setupCommonCommand retries with the configured/cached host.
       if (!this.cc && this.wantsLocal) {
+        const host = this.localHost || (this.config.localIp && this.config.localIp.trim());
+        this.log.debug("Local not connected; retrying local access" + (host ? " with host " + host : " via auto-discovery"));
         await this.maybeDiscoverLocal();
         if (!this.cc) {
           await this.setupCommonCommand();
+        }
+        if (!this.cc) {
+          this.log.debug("Local controller still unreachable" + (this.aToken ? "; using cloud fallback this cycle" : ""));
         }
       }
       if (this.cc) {
