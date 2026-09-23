@@ -1597,8 +1597,10 @@ class Wmswebcontrol extends utils.Adapter {
     if (idArray[3] === "scenes") {
       const scene = this.ccScenes.find((entry) => entry.name === idArray[4]);
       if (scene) {
+        this.log.debug("Running scene " + scene.name);
         try {
           await this.cc.executeScene(scene.id);
+          this.log.info("Scene confirmed: " + scene.name);
         } catch (error) {
           this.log.error("Scene failed for " + scene.name + ": " + (error && error.message));
         }
@@ -1608,11 +1610,13 @@ class Wmswebcontrol extends utils.Adapter {
     }
     const dest = this.ccDestinations.find((entry) => entry.name === idArray[3]);
     if (!dest) {
+      this.log.debug("Ignoring write to unknown local device " + idArray[3]);
       return;
     }
     const stateName = idArray[idArray.length - 1];
     const meta = dest.actions.find((entry) => entry.stateName === stateName);
     if (!meta) {
+      this.log.debug("Ignoring write to unknown action " + dest.name + " " + stateName);
       return;
     }
     let parameters = {};
@@ -1622,10 +1626,12 @@ class Wmswebcontrol extends utils.Adapter {
       // Reject missing/blank values: Number(null), Number("") and Number("  ") are all 0,
       // which would drive to position 0 (fully close/move) instead of being ignored.
       if (state.val == null || (typeof state.val === "string" && state.val.trim() === "")) {
+        this.log.debug("Ignoring blank value for " + dest.name + " " + stateName);
         return;
       }
       const value = Number(state.val);
       if (!Number.isFinite(value)) {
+        this.log.debug("Ignoring non-numeric value for " + dest.name + " " + stateName + ": " + state.val);
         return;
       }
       const clamped = Math.max(meta.clampMin, Math.min(meta.clampMax, value));
@@ -1641,6 +1647,7 @@ class Wmswebcontrol extends utils.Adapter {
         on = false;
       }
       if (on === null) {
+        this.log.debug("Ignoring unrecognized switch value for " + dest.name + " " + stateName + ": " + state.val);
         return;
       }
       parameters = { [meta.paramKey]: on };
@@ -1670,24 +1677,33 @@ class Wmswebcontrol extends utils.Adapter {
     const token = (this.ccCommandSeq.get(id) || 0) + 1;
     this.ccCommandSeq.set(id, token);
     const deadline = Date.now() + COMMAND_RETRY_MS;
+    const target = dest.name + " " + meta.stateName;
+    const paramStr = Object.keys(parameters).length ? " " + JSON.stringify(parameters) : "";
+    let attempt = 0;
     for (;;) {
       if (this.unloaded || !this.cc || this.ccCommandSeq.get(id) !== token) {
+        this.log.debug("Command for " + target + " aborted (superseded or shutting down)");
         return;
       }
+      attempt++;
+      this.log.debug("Sending command to " + target + paramStr + (attempt > 1 ? " (attempt " + attempt + ")" : ""));
       try {
         await this.cc.action([{ destinationId: dest.id, actionId: meta.id, parameters: parameters }]);
         if (meta.kind !== "button") {
           // Acknowledge the value actually sent, not the raw (possibly out-of-range) input.
           this.setState(id, ackVal, true);
+          this.log.info("Command confirmed for " + target + " = " + ackVal);
+        } else {
+          this.log.info("Command confirmed for " + target);
         }
         return;
       } catch (error) {
         const message = error && error.message;
         if (!meta.idempotent || Date.now() >= deadline) {
-          this.log.error("Command failed for " + dest.name + " " + meta.stateName + ": " + message);
+          this.log.error("Command failed for " + target + " after " + attempt + " attempt(s): " + message);
           return;
         }
-        this.log.debug("Command for " + dest.name + " " + meta.stateName + " not accepted, retrying in " + COMMAND_RETRY_INTERVAL_MS / 1000 + "s: " + message);
+        this.log.debug("Command for " + target + " not accepted, retrying in " + COMMAND_RETRY_INTERVAL_MS / 1000 + "s: " + message);
         await this.sleep(COMMAND_RETRY_INTERVAL_MS);
       }
     }
