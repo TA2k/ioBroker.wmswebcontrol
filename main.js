@@ -38,7 +38,13 @@ class Wmswebcontrol extends utils.Adapter {
     this.json2iob = new Json2iob(this);
     this.aToken = "";
     this.rToken = "";
-    this.userAgent = "WMS WebControl pro/2.7.0 (iPhone; iOS 16.7.6; Scale/3.00)";
+    this.userAgent = "WMS WebControl pro/3.9.6 (iPhone; iOS 16.7.6; Scale/3.00)";
+    this.appVersion = "3.9.6";
+    // Service base URLs are resolved from the discovery service after login.
+    // Defaults match the production discovery response and act as a fallback.
+    this.discoveryUrl = "https://discoveryservice.prod.devicecloud.warema.de/api/discovery";
+    this.messagingService = "https://devicecloudservice.prod.devicecloud.warema.de/api/v1.0/communication";
+    this.registryService = "https://devicecloudservice.prod.devicecloud.warema.de/api/v1.0/devices";
     this.appUpdateInterval = null;
     this.deviceIdArray = [];
     this.localUpdateIntervals = {};
@@ -181,6 +187,7 @@ class Wmswebcontrol extends utils.Adapter {
     await this.login();
     if (this.aToken) {
       await this.sleep(1000);
+      await this.getServiceMap();
       await this.getDeviceInfo();
 
       await this.getDeviceList();
@@ -374,7 +381,7 @@ class Wmswebcontrol extends utils.Adapter {
   async getDeviceInfo() {
     this.log.info("get devices");
     await got
-      .get("https://devicecloudservice.prod.devicecloud.warema.de/api/v1.0/devices", {
+      .get(this.registryService, {
         http2: true,
         https: {
           rejectUnauthorized: false,
@@ -399,26 +406,18 @@ class Wmswebcontrol extends utils.Adapter {
         if (res.result) {
           this.json2iob.parse("devices", res.result, { preferedArrayName: "serialNumber" });
           this.webControlId = res.result[0].serialNumber;
-          this.wcType = res.result[0].type.toLowerCase();
           got
-            .post(
-              "https://devicecloudservice.prod.devicecloud.warema.de/api/v1.0/communication/" +
-                this.wcType +
-                "/" +
-                this.webControlId +
-                "/postMessage/",
-              {
-                http2: true,
-                headers: {
-                  accept: "*/*",
-                  "content-type": "application/json",
-                  "user-agent": this.userAgent,
-                  "accept-language": "de-DE;q=1",
-                  authorization: "Bearer " + this.aToken,
-                },
-                json: { action: "info", changeIds: [] },
+            .post(this.messagingService + "/wcp/" + this.webControlId + "/postMessage/", {
+              http2: true,
+              headers: {
+                accept: "*/*",
+                "content-type": "application/json",
+                "user-agent": this.userAgent,
+                "accept-language": "de-DE;q=1",
+                authorization: "Bearer " + this.aToken,
               },
-            )
+              json: { action: "info", changeIds: [] },
+            })
             .json()
             .then((res) => {
               this.log.debug(JSON.stringify(res));
@@ -434,60 +433,38 @@ class Wmswebcontrol extends utils.Adapter {
       .catch((error) => {
         this.log.error(error);
       });
-    // await axios({
-    //   method: "get",
-    //   url: "https://devicecloudservice.prod.devicecloud.warema.de/api/v1.0/devices",
-    //   headers: {
-    //     Accept: "*/*",
-    //     "accept-encoding": "gzip, deflate, br",
-    //     "content-type": "application/x-www-form-urlencoded",
-    //     "user-agent": this.userAgent,
-    //     "accept-language": "de-DE;q=1",
-    //     authorization: "Bearer " + this.aToken,
-    //   },
-    // })
-    //   .then((response) => {
-    //     this.log.debug(JSON.stringify(response.data));
-    //     this.log.info("Devices found: " + response.data.result.length);
-    //     if (response.data.result) {
-    //       this.json2iob.parse("devices", response.data.result, { preferedArrayName: "serialNumber" });
-    //       this.webControlId = response.data.result[0].serialNumber;
-    //       this.wcType = response.data.result[0].type.toLowerCase();
-    //       this.requestClient({
-    //         method: "post",
-    //         withCredentials: true,
-    //         url:
-    //           "https://devicecloudservice.prod.devicecloud.warema.de/api/v1.0/communication/" +
-    //           this.wcType +
-    //           "/" +
-    //           this.webControlId +
-    //           "/postMessage/",
-    //         headers: {
-    //           accept: "*/*",
-    //           "content-type": "application/json",
-    //           "user-agent": this.userAgent,
-    //           "accept-language": "de-DE;q=1",
-    //           authorization: "Bearer " + this.aToken,
-    //         },
-    //         data: JSON.stringify({ action: "info", changeIds: [] }),
-    //       })
-    //         .then((response) => {
-    //           this.log.debug(JSON.stringify(response.data));
-    //           if (response.data.response) {
-    //             this.json2iob.parse("devices." + this.webControlId, response.data.response);
-    //           }
-    //         })
-    //         .catch((error) => {
-    //           error.config && this.log.error(error.config.url);
-    //           this.log.error(error);
-    //         });
-    //     }
-    //   })
-    //   .catch((error) => {
-    //     this.log.error("Get Devices failed");
-    //     error.config && this.log.error(error.config.url);
-    //     this.log.error(error);
-    //   });
+  }
+  async getServiceMap() {
+    // Resolve service base URLs from the discovery service (introduced in app 3.9.x).
+    // Keeps the hardcoded defaults on failure so the adapter still works.
+    await got
+      .get(this.discoveryUrl + "/app/wcpMobile/" + this.appVersion, {
+        http2: true,
+        timeout: { request: 5000 },
+        https: {
+          rejectUnauthorized: false,
+        },
+        headers: {
+          accept: "*/*",
+          "content-type": "application/x-www-form-urlencoded",
+          "user-agent": this.userAgent,
+          "accept-language": "de-DE;q=1",
+        },
+      })
+      .json()
+      .then((res) => {
+        this.log.debug(JSON.stringify(res));
+        if (res.messagingService) {
+          this.messagingService = res.messagingService;
+        }
+        if (res.registryService) {
+          this.registryService = res.registryService;
+        }
+      })
+      .catch((error) => {
+        this.log.error("Discovery failed, using default endpoints");
+        this.log.error(error);
+      });
   }
   async getDeviceList() {
     const resultData = await this.genericPostMessage("mb8Read", {
@@ -633,16 +610,11 @@ class Wmswebcontrol extends utils.Adapter {
       });
   }
   async genericPostMessage(action, parameter) {
-    if (!this.wcType || !this.webControlId) {
-      this.log.error("No webcontrol id or type found");
+    if (!this.webControlId) {
+      this.log.error("No webcontrol id found");
       return;
     }
-    const url =
-      "https://devicecloudservice.prod.devicecloud.warema.de/api/v1.0/communication/" +
-      this.wcType +
-      "/" +
-      this.webControlId +
-      "/postMessage/";
+    const url = this.messagingService + "/wcp/" + this.webControlId + "/postMessage/";
     const data = JSON.stringify({ action: action, parameters: parameter, changeIds: [] });
     this.log.debug("request: " + url);
     this.log.debug("data: " + data);
@@ -712,7 +684,7 @@ class Wmswebcontrol extends utils.Adapter {
   }
   decimalToHex(d, padding) {
     let hex = Number(d).toString(16);
-    padding = typeof padding === "undefined" || padding === null ? (padding = 2) : padding;
+    padding = typeof padding === "undefined" || padding === null ? 2 : padding;
 
     while (hex.length < padding) {
       hex = "0" + hex;
