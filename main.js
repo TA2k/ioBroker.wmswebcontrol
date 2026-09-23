@@ -39,6 +39,11 @@ const SWITCH_NAME = {
 // the controller over time.
 const LOCAL_POLL_MS = 15000;
 
+// An idempotent (absolute) command is resent in the background when the controller does not
+// accept it - the actuator's radio link can be briefly down. Retry every 2 s for up to 60 s.
+const COMMAND_RETRY_INTERVAL_MS = 2000;
+const COMMAND_RETRY_MS = 60000;
+
 class Wmswebcontrol extends utils.Adapter {
   /**
    * @param {Partial<utils.AdapterOptions>} [options={}]
@@ -101,6 +106,8 @@ class Wmswebcontrol extends utils.Adapter {
     this.ccActive = false;
     this.ccDestinations = [];
     this.ccScenes = [];
+    // Per-state command sequence: a newer write bumps the token so a pending retry stops.
+    this.ccCommandSeq = new Map();
     // Cached local host (config IP or a discovered address) so the self-heal retry does
     // not re-scan the LAN on every poll while the controller is temporarily down.
     this.localHost = null;
@@ -1112,7 +1119,7 @@ class Wmswebcontrol extends utils.Adapter {
    * The returned base is the preferred (pre-uniqueness) state name; the caller assigns the
    * final stateName order-independently across the destination's actions.
    * @param {{id: number, actionType: number, actionDescription: number, minValue?: number, maxValue?: number}} action
-   * @returns {{id: number, base: string, stateName: string, kind: string, paramKey: string|null, readKey: string|null, clampMin: number|null, clampMax: number|null, common: ioBroker.StateCommon}|null}
+   * @returns {{id: number, base: string, stateName: string, kind: string, paramKey: string|null, readKey: string|null, clampMin: number|null, clampMax: number|null, common: ioBroker.StateCommon, idempotent: boolean}|null}
    */
   describeAction(action) {
     const type = action.actionType;
@@ -1210,7 +1217,9 @@ class Wmswebcontrol extends utils.Adapter {
         this.log.debug("commonCommand: unsupported actionType " + type + " (description " + desc + ") skipped");
         return null;
     }
-    return { id: action.id, base: base, stateName: "", kind: kind, paramKey: paramKey, readKey: readKey, clampMin: clampMin, clampMax: clampMax, common: common };
+    // Absolute commands are safe to resend unchanged; relative/toggle/impulse are not.
+    const idempotent = type === ACTION_TYPE.PERCENTAGE || type === ACTION_TYPE.ROTATION || type === ACTION_TYPE.SWITCH || type === ACTION_TYPE.STOP;
+    return { id: action.id, base: base, stateName: "", kind: kind, paramKey: paramKey, readKey: readKey, clampMin: clampMin, clampMax: clampMax, common: common, idempotent: idempotent };
   }
 
   /**
@@ -1627,20 +1636,50 @@ class Wmswebcontrol extends utils.Adapter {
       parameters = { [meta.paramKey]: on };
       ackVal = on;
     }
-    // Buttons (stop/toggle/impulse/identify) carry no parameters.
-    let ok = false;
-    try {
-      await this.cc.action([{ destinationId: dest.id, actionId: meta.id, parameters: parameters }]);
-      ok = true;
-    } catch (error) {
-      this.log.error("Command failed for " + dest.name + " " + stateName + ": " + (error && error.message));
-    }
+    // Buttons (stop/toggle/impulse/identify) carry no parameters. Reset the momentary button
+    // right away; its command is still delivered (and retried, if idempotent) in the background.
     if (meta.kind === "button") {
-      // Reset the momentary button regardless of outcome.
       this.setState(id, false, true);
-    } else if (ok) {
-      // Acknowledge the value actually sent, not the raw (possibly out-of-range) input.
-      this.setState(id, ackVal, true);
+    }
+    // Fire-and-forget: the newest write per state supersedes any pending retry for it.
+    void this.sendCommonAction(id, dest, meta, parameters, ackVal);
+  }
+
+  /**
+   * Send a commonCommand action and, for idempotent (absolute) actions, retry it in the
+   * background when the controller does not accept it - an actuator's radio link can be
+   * briefly down and a resent absolute command is harmless. Only the latest command per
+   * state stays active, so a newer write never fights a stale retry.
+   * @param {string} id
+   * @param {{id: number, name: string}} dest
+   * @param {{id: number, kind: string, stateName: string, idempotent: boolean}} meta
+   * @param {Record<string, number|boolean>} parameters
+   * @param {number|boolean|null} ackVal value to acknowledge on success (level/switch only)
+   */
+  async sendCommonAction(id, dest, meta, parameters, ackVal) {
+    const token = (this.ccCommandSeq.get(id) || 0) + 1;
+    this.ccCommandSeq.set(id, token);
+    const deadline = Date.now() + COMMAND_RETRY_MS;
+    for (;;) {
+      if (this.unloaded || !this.cc || this.ccCommandSeq.get(id) !== token) {
+        return;
+      }
+      try {
+        await this.cc.action([{ destinationId: dest.id, actionId: meta.id, parameters: parameters }]);
+        if (meta.kind !== "button") {
+          // Acknowledge the value actually sent, not the raw (possibly out-of-range) input.
+          this.setState(id, ackVal, true);
+        }
+        return;
+      } catch (error) {
+        const message = error && error.message;
+        if (!meta.idempotent || Date.now() >= deadline) {
+          this.log.error("Command failed for " + dest.name + " " + meta.stateName + ": " + message);
+          return;
+        }
+        this.log.debug("Command for " + dest.name + " " + meta.stateName + " not accepted, retrying in " + COMMAND_RETRY_INTERVAL_MS / 1000 + "s: " + message);
+        await this.sleep(COMMAND_RETRY_INTERVAL_MS);
+      }
     }
   }
 
