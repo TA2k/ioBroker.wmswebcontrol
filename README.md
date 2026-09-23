@@ -22,9 +22,11 @@ The adapter supports two connection paths and prefers the local one:
 
 - **Local (recommended):** the adapter finds the WMS controller on the local network
   automatically (**Auto-discovery**, on by default). The scan runs in the background and does
-  not delay startup. You can also enter the controller's IP directly under **Local IP** to
-  skip the scan. The controller's local API needs no login, and this path keeps working even
-  when the Warema cloud or its IoT hub is unavailable.
+  not delay startup. A discovered IP is written back to **Local IP** so later starts skip the
+  scan. You can also enter the controller's IP directly under **Local IP**. Local status is
+  polled every **Local polling interval** seconds (default 15). The controller's local API
+  needs no login, and this path keeps working even when the Warema cloud or its IoT hub is
+  unavailable.
 - **Cloud:** enter your Warema **username** and **password**. Used as a fallback when the
   controller cannot be reached on the LAN, and to look up the controller when the local path
   is not configured.

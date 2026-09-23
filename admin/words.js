@@ -51,4 +51,16 @@ systemDictionary = {
     pl: "Interwał aktualizacji w minutach",
     "zh-cn": "以分钟为单位的更新间隔",
   },
+  "Local polling interval in seconds": {
+    en: "Local polling interval in seconds",
+    de: "Lokales Abfrageintervall in Sekunden",
+    ru: "Интервал локального опроса в секундах",
+    pt: "Intervalo de sondagem local em segundos",
+    nl: "Lokaal polling-interval in seconden",
+    fr: "Intervalle d'interrogation locale en secondes",
+    it: "Intervallo di polling locale in secondi",
+    es: "Intervalo de sondeo local en segundos",
+    pl: "Interwał lokalnego odpytywania w sekundach",
+    "zh-cn": "本地轮询间隔（秒）",
+  },
 };

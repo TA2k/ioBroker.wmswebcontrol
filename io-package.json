@@ -190,6 +190,7 @@
     "user": "",
     "password": "",
     "interval": 5,
+    "localInterval": 15,
     "localIp": "",
     "autodiscover": true
   },

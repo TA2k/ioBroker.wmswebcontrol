@@ -33,6 +33,12 @@ const SWITCH_NAME = {
   [ACTION_DESC.LOAD_SWITCH]: "load",
 };
 
+// Local status is polled on a fixed short cadence (the local API only throttles to ~0.5 s
+// per call), independent of the minute-based cloud interval. Home Assistant's wmspro polls
+// every 5 s; 15 s stays well clear of the reports that very fast local polling can lock up
+// the controller over time.
+const LOCAL_POLL_MS = 15000;
+
 class Wmswebcontrol extends utils.Adapter {
   /**
    * @param {Partial<utils.AdapterOptions>} [options={}]
@@ -105,6 +111,11 @@ class Wmswebcontrol extends utils.Adapter {
     this.registryDeviceCount = 0;
     // Set from onReady; drives the local self-heal retry in pollStatus.
     this.wantsLocal = false;
+    // Timestamp of the last cloud status poll, so cloud fallback keeps the minute-based
+    // interval even while the loop itself runs on the faster local cadence.
+    this.lastCloudPollTs = 0;
+    // Timestamp of the last LAN scan, so the poll self-heal does not rescan on every tick.
+    this.lastScanTs = 0;
     // Guards against overlapping poll cycles when a poll runs longer than the interval.
     this.polling = false;
     // Set in onUnload so an async setup that started before shutdown does not publish a
@@ -241,6 +252,11 @@ class Wmswebcontrol extends utils.Adapter {
     if (this.config.interval < 1) {
       this.config.interval = 1;
     }
+    // Local polling runs in seconds; floor at 5 s so a mistaken 0/1 cannot hammer the
+    // controller. Falls back to the default when unset.
+    if (!this.config.localInterval || this.config.localInterval < 5) {
+      this.config.localInterval = LOCAL_POLL_MS / 1000;
+    }
     const hasCloud = !!(this.config.user && this.config.password);
     this.wantsLocal = !!(this.config.localIp || this.config.autodiscover);
     if (!hasCloud && !this.wantsLocal) {
@@ -294,7 +310,10 @@ class Wmswebcontrol extends utils.Adapter {
       }
       this.appUpdateInterval = setInterval(async () => {
         await this.pollStatus();
-      }, this.config.interval * 60 * 1000);
+        // Local status polls on the configured local interval (seconds); the pure cloud
+        // path keeps the minute interval. When local is wanted the loop runs on the fast
+        // cadence and the cloud fallback throttles itself inside pollStatus.
+      }, this.wantsLocal ? this.config.localInterval * 1000 : this.config.interval * 60 * 1000);
     }
   }
 
@@ -975,17 +994,44 @@ class Wmswebcontrol extends utils.Adapter {
     if ((this.config.localIp && this.config.localIp.trim()) || this.localHost) {
       return;
     }
+    // The poll self-heal calls this on every cycle; throttle the full LAN scan so a
+    // controller that stays unreachable is not scanned for on every short poll tick.
+    if (this.lastScanTs && Date.now() - this.lastScanTs < 120000) {
+      return;
+    }
+    this.lastScanTs = Date.now();
     this.discovering = true;
     try {
       const found = await this.discoverLocalHost();
       if (found && !this.unloaded) {
         this.localHost = found;
         await this.setupCommonCommand();
+        await this.persistDiscoveredIp(found);
       }
     } catch (error) {
       this.log.debug("Background discovery failed: " + (error && error.message));
     } finally {
       this.discovering = false;
+    }
+  }
+
+  /**
+   * Save a discovered controller IP into the instance settings so it is visible in the
+   * config dialog and subsequent starts skip the LAN scan. Writing native config restarts
+   * the adapter once; guarded to write only when the value actually changes, so it cannot
+   * loop (after the restart the configured IP is used and discovery no longer runs).
+   * @param {string} ip
+   */
+  async persistDiscoveredIp(ip) {
+    try {
+      const id = "system.adapter." + this.namespace;
+      const obj = await this.getForeignObjectAsync(id);
+      if (obj && obj.native && obj.native.localIp !== ip) {
+        await this.extendForeignObjectAsync(id, { native: { localIp: ip } });
+        this.log.info("Saved discovered controller IP " + ip + " to the instance settings");
+      }
+    } catch (error) {
+      this.log.debug("Could not persist discovered IP: " + (error && error.message));
     }
   }
 
@@ -1344,11 +1390,74 @@ class Wmswebcontrol extends utils.Adapter {
     if (this.unloaded) {
       return false;
     }
+    // Remove local.* objects the current configuration no longer produces (e.g. a state
+    // renamed by a newer build, or a device removed on the controller), so setObjectNotExists
+    // never leaves stale objects behind.
+    const keep = new Set(["local"]);
+    for (const dest of destinations) {
+      keep.add("local." + dest.name);
+      keep.add("local." + dest.name + ".drivingCause");
+      keep.add("local." + dest.name + ".heartbeatError");
+      keep.add("local." + dest.name + ".blocking");
+      for (const meta of dest.actions) {
+        keep.add("local." + dest.name + "." + meta.stateName);
+      }
+    }
+    if (scenes.length) {
+      keep.add("local.scenes");
+      for (const scene of scenes) {
+        keep.add("local.scenes." + scene.name);
+      }
+    }
+    await this.pruneLocalObjects(keep);
     this.ccDestinations = destinations;
     this.ccScenes = scenes;
     this.log.debug("commonCommand destinations: " + JSON.stringify(this.ccDestinations));
     this.log.debug("commonCommand scenes: " + JSON.stringify(this.ccScenes));
     return true;
+  }
+
+  /**
+   * Delete local.* objects that are not in the freshly built keep set. Enumerates the
+   * instance objects, so orphans from an older build (renamed states, removed devices) are
+   * cleaned up. Deepest ids first so states are removed before their channel.
+   * @param {Set<string>} keep object ids (relative to the namespace) to preserve
+   * @returns {Promise<void>}
+   */
+  async pruneLocalObjects(keep) {
+    if (this.unloaded) {
+      return;
+    }
+    let existing;
+    try {
+      existing = await this.getAdapterObjectsAsync();
+    } catch (error) {
+      this.log.debug("Local object cleanup skipped: " + (error && error.message));
+      return;
+    }
+    const prefix = this.namespace + ".local.";
+    const stale = [];
+    for (const fullId of Object.keys(existing)) {
+      if (!fullId.startsWith(prefix)) {
+        continue;
+      }
+      const rel = fullId.slice(this.namespace.length + 1);
+      if (!keep.has(rel)) {
+        stale.push(rel);
+      }
+    }
+    stale.sort((a, b) => b.split(".").length - a.split(".").length);
+    for (const rel of stale) {
+      if (this.unloaded) {
+        return;
+      }
+      try {
+        await this.delObjectAsync(rel);
+        this.log.debug("Removed stale local object " + rel);
+      } catch (error) {
+        this.log.debug("Could not remove stale local object " + rel + ": " + (error && error.message));
+      }
+    }
   }
 
   /**
@@ -1373,11 +1482,13 @@ class Wmswebcontrol extends utils.Adapter {
     }
     this.failedStatusCycles = 0;
     this.setState("info.connection", true, true);
+    const updated = new Set();
     for (const detail of details) {
       const dest = this.ccDestinations.find((entry) => entry.id === detail.destinationId);
       if (!dest || !detail.data) {
         continue;
       }
+      updated.add(detail.destinationId);
       const data = detail.data;
       const base = "local." + dest.name;
       const heartbeat = data.heartBeatError != null ? data.heartBeatError : data.heartbeatError;
@@ -1403,6 +1514,14 @@ class Wmswebcontrol extends utils.Adapter {
         await this.setStateChangedAsync(base + "." + meta.stateName, { val: val, ack: true });
       }
     }
+    const missing = this.ccDestinations.filter((dest) => !updated.has(dest.id)).map((dest) => dest.name);
+    if (missing.length) {
+      // The controller answered the poll but returned no data for these destinations
+      // (e.g. an actuator that is asleep or out of radio range reports a status error).
+      this.log.debug("commonCommand poll updated " + updated.size + " of " + this.ccDestinations.length + " destinations; no status for: " + missing.join(", "));
+    } else {
+      this.log.debug("commonCommand poll updated " + updated.size + " destinations");
+    }
   }
 
   /**
@@ -1418,9 +1537,14 @@ class Wmswebcontrol extends utils.Adapter {
     this.polling = true;
     try {
       // Self-heal: when local access is configured but the tree could not be built yet
-      // (controller was down at startup or dropped off the LAN), retry building it.
+      // (controller was down at startup, dropped off the LAN, or an earlier scan missed it),
+      // retry. maybeDiscoverLocal re-runs the scan when no host is known yet; otherwise
+      // setupCommonCommand retries with the configured/cached host.
       if (!this.cc && this.wantsLocal) {
-        await this.setupCommonCommand();
+        await this.maybeDiscoverLocal();
+        if (!this.cc) {
+          await this.setupCommonCommand();
+        }
       }
       if (this.cc) {
         this.ccActive = await this.cc.pingLocal();
@@ -1428,7 +1552,13 @@ class Wmswebcontrol extends utils.Adapter {
         return;
       }
       if (this.aToken) {
-        await this.getDeviceStatus();
+        // Cloud fallback: keep the configured minute interval even though the loop may run
+        // on the faster local cadence, so the intermittent cloud is not hammered.
+        const cloudWaitMs = this.config.interval * 60 * 1000;
+        if (Date.now() - this.lastCloudPollTs >= cloudWaitMs) {
+          this.lastCloudPollTs = Date.now();
+          await this.getDeviceStatus();
+        }
       }
     } finally {
       this.polling = false;
