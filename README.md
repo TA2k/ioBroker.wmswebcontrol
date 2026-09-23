@@ -16,9 +16,37 @@
 
 Adapter for Warema WMS Webcontrol
 
+## Setup
+
+The adapter supports two connection paths and prefers the local one:
+
+- **Local (recommended):** enter the WMS controller's IP in **Local IP**, or enable
+  **Auto-discovery** to scan the local network for it. The controller's local API needs no
+  login. This path keeps working even when the Warema cloud or its IoT hub is unavailable.
+- **Cloud:** enter your Warema **username** and **password**. Used as a fallback when the
+  controller cannot be reached on the LAN, and to look up the controller when the local path
+  is not configured.
+
+You can configure both: the adapter drives the controller locally when it is reachable and
+falls back to the cloud otherwise. The cloud fallback is only used for a single-controller
+account (the local controller cannot be matched to a specific one otherwise).
+
 ## Usage
 
-To control your device change the \*Convert values.
+### Local mode (commonCommand)
+
+When the controller is reachable, the adapter builds a `local.*` tree from its configuration:
+
+- `local.<device>.position` - target position 0..100 % (writable).
+- `local.<device>.slatAngle` - target slat angle, range per device (writable, blinds only).
+- `local.<device>.stop` - button, stops the current movement (writable).
+- `local.<device>.drivingCause` / `.heartbeatError` / `.blocking` - status (read-only).
+- `local.scenes.<scene>` - button, runs the scene (writable).
+
+### Cloud mode (legacy)
+
+When only the cloud path is available, the adapter exposes the controller's devices, scenes
+and channels. To control a channel change the `*Convert` values, e.g.:
 
 `wmswebcontrol.0.Markise+XXXX.setting0Convert`
 
@@ -27,6 +55,14 @@ To control your device change the \*Convert values.
 `wmswebcontrol.0.Markise.setting2Convert`
 
 ## Changelog
+
+### **WORK IN PROGRESS**
+
+- add local commonCommand control (IP or auto-discovery), preferred over the cloud with a
+  cloud fallback
+- use axios for all HTTP calls, drop @esm2cjs/got
+- resolve service endpoints from the discovery service
+
 ### 0.1.4 (2025-01-27)
 
 - ignore certificate errors

@@ -11,7 +11,9 @@ const axios = require("axios");
 const { HttpsCookieAgent } = require("http-cookie-agent/http");
 const tough = require("tough-cookie");
 const crypto = require("crypto");
+const os = require("os");
 const Json2iob = require("json2iob");
+const { CommonCommandClient, ACTION_TYPE } = require("./lib/commonCommandClient");
 
 class Wmswebcontrol extends utils.Adapter {
   /**
@@ -55,6 +57,7 @@ class Wmswebcontrol extends utils.Adapter {
     this.discoveryUrl = "https://discoveryservice.prod.devicecloud.warema.de/api/discovery";
     this.messagingService = "https://devicecloudservice.prod.devicecloud.warema.de/api/v1.0/communication";
     this.registryService = "https://devicecloudservice.prod.devicecloud.warema.de/api/v1.0/devices";
+    this.commonCommandService = "https://devicecloudservice.prod.devicecloud.warema.de/api/v1.0/command";
     this.appUpdateInterval = null;
     // Number of consecutive status polls that returned no data. info.connection is
     // only flipped to false after several failures so a single transient hiccup
@@ -62,6 +65,30 @@ class Wmswebcontrol extends utils.Adapter {
     this.failedStatusCycles = 0;
 
     this.deviceList = [];
+    this.sceneList = [];
+    this.channelList = [];
+    // commonCommand mode: when a reachable controller is configured or discovered, the
+    // adapter builds its tree from the local getConfiguration and drives it over the
+    // commonCommand API, preferring the local transport and falling back to the cloud
+    // commonCommand endpoints (same id space) when local is unreachable. The legacy
+    // postMessage/mb8 cloud path below stays as a fallback for when the controller is
+    // never reachable on the LAN.
+    this.cc = null;
+    this.ccActive = false;
+    this.ccDestinations = [];
+    this.ccScenes = [];
+    // Cached local host (config IP or a discovered address) so the self-heal retry does
+    // not re-scan the LAN on every poll while the controller is temporarily down.
+    this.localHost = null;
+    // Number of controllers in the cloud registry. The cloud commonCommand fallback is
+    // only enabled when there is exactly one, so a multi-controller account cannot route
+    // fallback commands to the wrong controller (the local controller cannot otherwise be
+    // matched to a registry entry).
+    this.registryDeviceCount = 0;
+    // Set from onReady; drives the local self-heal retry in pollStatus.
+    this.wantsLocal = false;
+    // Guards against overlapping poll cycles when a poll runs longer than the interval.
+    this.polling = false;
     this.states = {
       textIndexDrivingCause: {
         498: "Heartbeat Sicherheitskontakt",
@@ -190,28 +217,42 @@ class Wmswebcontrol extends utils.Adapter {
     if (this.config.interval < 1) {
       this.config.interval = 1;
     }
-    if (!this.config.user || !this.config.password) {
-      this.log.info("Please enter your username and password!");
+    const hasCloud = !!(this.config.user && this.config.password);
+    this.wantsLocal = !!(this.config.localIp || this.config.autodiscover);
+    if (!hasCloud && !this.wantsLocal) {
+      this.log.info("Please enter your username and password, or a local controller IP!");
       return;
     }
     // in this template all states changes inside the adapters namespace are subscribed
     this.subscribeStates("*");
-    await this.login();
-    if (this.aToken) {
-      await this.sleep(1000);
-      await this.getServiceMap();
-      await this.getDeviceInfo();
-
+    if (hasCloud) {
+      await this.login();
+      if (this.aToken) {
+        await this.sleep(1000);
+        await this.getServiceMap();
+        await this.getDeviceInfo();
+        this.refreshTokenInterval && clearInterval(this.refreshTokenInterval);
+        this.refreshTokenInterval = setInterval(() => {
+          this.refreshToken().catch(() => {});
+        }, 15 * 60 * 1000); // 15min
+      }
+    }
+    // Prefer commonCommand mode: build the tree from the local getConfiguration when the
+    // controller is reachable. Fall back to the legacy postMessage/mb8 cloud tree only
+    // when the controller cannot be reached on the LAN at all.
+    await this.setupCommonCommand();
+    if (!this.cc && this.aToken) {
       await this.getDeviceList();
+      await this.getSceneList();
+      await this.getChannelList();
+    }
+
+    if (this.aToken || this.cc || this.wantsLocal) {
       await this.sleep(5000);
-      await this.getDeviceStatus();
+      await this.pollStatus();
       this.appUpdateInterval = setInterval(async () => {
-        await this.getDeviceStatus();
+        await this.pollStatus();
       }, this.config.interval * 60 * 1000);
-      this.refreshTokenInterval && clearInterval(this.refreshTokenInterval);
-      this.refreshTokenInterval = setInterval(() => {
-        this.refreshToken().catch(() => {});
-      }, 15 * 60 * 1000); // 15min
     }
   }
 
@@ -241,8 +282,7 @@ class Wmswebcontrol extends utils.Adapter {
         accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
       },
     }).catch((error) => {
-      error.response && this.log.error(JSON.stringify(error.response.data));
-      this.log.error(String(error));
+      this.log.error("Authorize request failed: " + this.formatError(error));
       return null;
     });
     if (!authResponse) {
@@ -277,8 +317,7 @@ class Wmswebcontrol extends utils.Adapter {
         encodeURIComponent(token) +
         "&Input.RememberMe=false",
     }).catch((error) => {
-      error.response && this.log.error(JSON.stringify(error.response.data));
-      this.log.error(String(error));
+      this.log.error("Login request failed: " + this.formatError(error));
       return null;
     });
     if (!loginResponse) {
@@ -308,7 +347,7 @@ class Wmswebcontrol extends utils.Adapter {
         accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
       },
     }).catch((error) => {
-      this.log.error(String(error));
+      this.log.error("Authorization callback failed: " + this.formatError(error));
       return null;
     });
     if (!callbackResponse) {
@@ -356,19 +395,60 @@ class Wmswebcontrol extends utils.Adapter {
         this.rToken = response.data.refresh_token;
       })
       .catch(async (error) => {
+        this.log.error("Token exchange failed: " + this.formatError(error));
         if (error.response && error.response.status === 400) {
-          this.log.error("Login was not successful restart adapter");
+          this.log.error("Login was not successful, restart adapter");
           await this.sleep(10000);
           this.restart();
         }
-        error.response && this.log.error(JSON.stringify(error.response.data));
-        this.log.error(String(error));
       });
   }
   async sleep(ms) {
     return new Promise((resolve) => {
       setTimeout(resolve, ms);
     });
+  }
+  /**
+   * Build a compact, informative one-line description of a request error:
+   * the HTTP status plus the server's WMS error (code and message) when the body
+   * carries one, or the network/timeout error code otherwise, followed by the
+   * error message. Avoids the bare "Request failed with status code 400" that
+   * hides the actual cause (e.g. WMS 4001 "device not connected to the iot hub").
+   * @param {any} error
+   */
+  formatError(error) {
+    if (!error) {
+      return "unknown error";
+    }
+    const parts = [];
+    if (error.response) {
+      parts.push("HTTP " + error.response.status);
+      const data = error.response.data;
+      const wms = Array.isArray(data) ? data[0] : null;
+      if (wms && wms.code != null) {
+        parts.push("WMS " + wms.code + (wms.message ? " " + wms.message : ""));
+      } else if (data != null) {
+        parts.push(typeof data === "string" ? data : this.safeStringify(data));
+      }
+    } else if (error.code) {
+      parts.push(error.code);
+    }
+    if (error.message) {
+      parts.push(error.message);
+    }
+    return parts.length ? parts.join(" - ") : String(error);
+  }
+  /**
+   * JSON.stringify that never throws, so formatError stays safe inside catch handlers.
+   * @param {any} value value to serialize
+   * @returns {string} JSON string, or String(value) if serialization fails
+   */
+  safeStringify(value) {
+    try {
+      return JSON.stringify(value);
+    } catch {
+      return String(value);
+    }
   }
   /**
    * Retry a request on transient failures (network errors, timeouts, 5xx, 408, 429).
@@ -417,8 +497,7 @@ class Wmswebcontrol extends utils.Adapter {
         this.rToken = response.data.refresh_token;
       })
       .catch((error) => {
-        error.response && this.log.error(JSON.stringify(error.response.data));
-        this.log.error(String(error));
+        this.log.error("Token refresh failed: " + this.formatError(error));
         // Rethrow so the 401 handler in genericPostMessage falls through to relogin
         // instead of retrying with a stale token.
         throw error;
@@ -448,6 +527,7 @@ class Wmswebcontrol extends utils.Adapter {
           return;
         }
         this.log.info("Devices found: " + res.result.length);
+        this.registryDeviceCount = res.result.length;
         if (res.result) {
           this.json2iob.parse("devices", res.result, { preferedArrayName: "serialNumber" });
           this.webControlId = res.result[0].serialNumber;
@@ -473,12 +553,12 @@ class Wmswebcontrol extends utils.Adapter {
               }
             })
             .catch((error) => {
-              this.log.error(String(error));
+              this.log.error("Get controller info failed: " + this.formatError(error));
             });
         }
       })
       .catch((error) => {
-        this.log.error(String(error));
+        this.log.error("Get devices failed: " + this.formatError(error));
       });
   }
   async getServiceMap() {
@@ -504,10 +584,12 @@ class Wmswebcontrol extends utils.Adapter {
         if (res.registryService) {
           this.registryService = res.registryService;
         }
+        if (res.commonCommandService) {
+          this.commonCommandService = res.commonCommandService;
+        }
       })
       .catch((error) => {
-        this.log.error("Discovery failed, using default endpoints");
-        this.log.error(String(error));
+        this.log.error("Discovery failed, using default endpoints: " + this.formatError(error));
       });
   }
   async getDeviceList() {
@@ -516,55 +598,45 @@ class Wmswebcontrol extends utils.Adapter {
       block: 42,
       eui: parseInt(this.webControlId),
       length: 12800,
-    }).catch((error) => {
-      this.log.error("Get DevicesList failed");
-      if (error) {
-        error.response && this.log.error(JSON.stringify(error.response.data));
-        this.log.error(String(error));
-      }
     });
 
     if (!resultData || !resultData.response || resultData.response.data == null) {
-      this.log.error("Get DevicesList failed");
+      this.log.error("Get device list failed: no data returned (the controller may be offline or not connected to the Warema cloud)");
       return;
     }
     this.log.debug(JSON.stringify(resultData.response));
     const result = Buffer.from(resultData.response.data, "base64");
-    const deviceArray = result.toString("hex").match(/(.{1,128})/g);
-    if (!deviceArray) {
-      this.log.error("No devices found");
-
-      return;
+    // The device table is a flat array of fixed 64-byte entries. Each entry starts
+    // with the serial number as a little-endian uint32; the alias is a latin1 string
+    // in bytes 24..63, terminated by the first null byte. Serial 0 marks an empty slot.
+    const ENTRY_SIZE = 64;
+    for (let offset = 0; offset + ENTRY_SIZE <= result.length; offset += ENTRY_SIZE) {
+      const elementSerial = result.readUInt32LE(offset);
+      if (elementSerial === 0) {
+        continue;
+      }
+      let elementName = result.toString("latin1", offset + 24, offset + ENTRY_SIZE);
+      const nullIndex = elementName.indexOf("\u0000");
+      if (nullIndex !== -1) {
+        elementName = elementName.substring(0, nullIndex);
+      }
+      // Keep the id usable as an ioBroker object id: dot is the state hierarchy
+      // separator, so spaces and dots are stripped.
+      elementName = elementName.replace(/ /g, "").replace(/\./g, "");
+      this.deviceList.push({ id: elementSerial, name: elementName });
+      await this.setObjectNotExistsAsync(elementName, {
+        type: "device",
+        common: {
+          name: elementSerial.toString(),
+          write: false,
+          read: true,
+        },
+        native: {},
+      });
     }
-    for (const element of deviceArray) {
-      let elementArray = element.split("ffffffffffff");
-      if (!elementArray[1]) {
-        elementArray = element.split("ffffff");
-      }
-      if (!elementArray[1]) {
-        this.log.debug("Skip: " + element);
-        return;
-      }
-      const elementSerial = Buffer.from(elementArray[0].substring(0, 8), "hex").readInt32LE();
-
-      const elementName = Buffer.from(elementArray[1], "hex")
-        .toString("latin1")
-        //eslint-disable-next-line
-        .replace(/\u0000/g, "")
-        .replace(/ /g, "")
-        .replace(/\./g, "");
-      if (elementSerial != 0) {
-        this.deviceList.push({ id: elementSerial, name: elementName });
-        await this.setObjectNotExistsAsync(elementName, {
-          type: "device",
-          common: {
-            name: elementSerial.toString(),
-            write: false,
-            read: true,
-          },
-          native: {},
-        });
-      }
+    if (!this.deviceList.length) {
+      this.log.error("No devices found");
+      return;
     }
 
     this.log.debug(JSON.stringify(this.deviceList));
@@ -607,16 +679,12 @@ class Wmswebcontrol extends utils.Adapter {
     const resultData = await this.genericPostMessage("sensorValueExportCurrent", {
       connectionType: 1,
       day: new Date().getDate(),
-      eui: 1278808,
+      eui: parseInt(this.webControlId),
       month: new Date().getMonth() + 1,
       sensorId: 255,
       year: parseInt(new Date().getFullYear().toString().substring(2)),
     }).catch((error) => {
-      this.log.debug("No Sensor data");
-      if (error) {
-        error.response && this.log.debug(JSON.stringify(error.response.data));
-        this.log.debug(String(error));
-      }
+      this.log.debug("No sensor data: " + this.formatError(error));
     });
     if (resultData && resultData.response) {
       this.log.debug(JSON.stringify(resultData.response));
@@ -657,10 +725,488 @@ class Wmswebcontrol extends utils.Adapter {
         }, 5000);
       })
       .catch((error) => {
-        this.log.error(error);
-        this.log.error("set status failed");
+        this.log.error("Set status failed for " + device.id + ": " + this.formatError(error));
       });
   }
+  /**
+   * Parse a WMS scene or channel list block into named entries. Both blocks share
+   * the same 188-byte entry layout: bytes 28..67 hold the entry name (alias0) as a
+   * latin1 string terminated by the first null byte. An entry's ordinal position is
+   * its id (sceneNumber / channel number). Unnamed slots are skipped.
+   * @param {Buffer} buffer decoded block bytes
+   * @returns {{id: number, name: string}[]}
+   */
+  parseAliasList(buffer) {
+    const ENTRY_SIZE = 188;
+    const ALIAS_OFFSET = 28;
+    const ALIAS_LENGTH = 40;
+    const list = [];
+    for (let index = 0, offset = 0; offset + ENTRY_SIZE <= buffer.length; index++, offset += ENTRY_SIZE) {
+      let name = buffer.toString("latin1", offset + ALIAS_OFFSET, offset + ALIAS_OFFSET + ALIAS_LENGTH);
+      const nullIndex = name.indexOf("\u0000");
+      if (nullIndex !== -1) {
+        name = name.substring(0, nullIndex);
+      }
+      // Keep the name usable as an ioBroker object id (dot is the hierarchy separator).
+      name = name.replace(/ /g, "").replace(/\./g, "");
+      if (!name) {
+        continue;
+      }
+      list.push({ id: index, name: name });
+    }
+    return list;
+  }
+  async getSceneList() {
+    // Scene table: a single mb8Read of block 48 (32 entries x 188 bytes).
+    const resultData = await this.genericPostMessage("mb8Read", {
+      address: 0,
+      block: 48,
+      eui: parseInt(this.webControlId),
+      length: 6016,
+    });
+    if (!resultData || !resultData.response || resultData.response.data == null) {
+      this.log.debug("No scene list returned");
+      return;
+    }
+    this.sceneList = this.parseAliasList(Buffer.from(resultData.response.data, "base64"));
+    for (const scene of this.sceneList) {
+      await this.setObjectNotExistsAsync("scenes." + scene.name, {
+        type: "state",
+        common: {
+          name: "Execute scene " + scene.id,
+          role: "button",
+          type: "boolean",
+          write: true,
+          read: false,
+        },
+        native: {},
+      });
+    }
+    this.log.debug("scenes: " + JSON.stringify(this.sceneList));
+  }
+  async getChannelList() {
+    // Channel table: block 50 (300 entries x 188 bytes = 56400). The controller
+    // serves it in 18800-byte chunks at advancing byte offsets; the chunks are
+    // concatenated before parsing (matches app 3.9.6).
+    const BLOCK_SIZE = 56400;
+    const CHUNK_SIZE = 18800;
+    const chunks = [];
+    for (let address = 0; address < BLOCK_SIZE; address += CHUNK_SIZE) {
+      const length = Math.min(CHUNK_SIZE, BLOCK_SIZE - address);
+      const resultData = await this.genericPostMessage("mb8Read", {
+        address: address,
+        block: 50,
+        eui: parseInt(this.webControlId),
+        length: length,
+      });
+      if (!resultData || !resultData.response || resultData.response.data == null) {
+        this.log.debug("No channel list returned");
+        return;
+      }
+      const chunk = Buffer.from(resultData.response.data, "base64");
+      // A short chunk would shift every following channel's ordinal (its id), so
+      // abort rather than build a misaligned list.
+      if (chunk.length !== length) {
+        this.log.warn("Channel list chunk length mismatch (" + chunk.length + " != " + length + "), skipping channel enumeration");
+        return;
+      }
+      chunks.push(chunk);
+    }
+    this.channelList = this.parseAliasList(Buffer.concat(chunks));
+    for (const channel of this.channelList) {
+      await this.setObjectNotExistsAsync("channels." + channel.name, {
+        type: "channel",
+        common: { name: "Channel " + channel.id },
+        native: {},
+      });
+      await this.setObjectNotExistsAsync("channels." + channel.name + ".position", {
+        type: "state",
+        common: { name: "Target position", role: "level.blind", type: "number", unit: "%", min: 0, max: 100, write: true, read: true },
+        native: {},
+      });
+      await this.setObjectNotExistsAsync("channels." + channel.name + ".slatAngle", {
+        type: "state",
+        common: { name: "Target slat angle", role: "level.tilt", type: "number", min: -127, max: 127, write: true, read: true },
+        native: {},
+      });
+      await this.setObjectNotExistsAsync("channels." + channel.name + ".stop", {
+        type: "state",
+        common: { name: "Stop movement", role: "button", type: "boolean", write: true, read: false },
+        native: {},
+      });
+    }
+    this.log.debug("channels: " + JSON.stringify(this.channelList));
+  }
+
+  /**
+   * Strip characters that are not valid inside an ioBroker object id (dot is the
+   * hierarchy separator; spaces are avoided).
+   * @param {string} name
+   * @returns {string}
+   */
+  sanitizeName(name) {
+    return String(name == null ? "" : name)
+      .replace(/ /g, "")
+      .replace(/\./g, "");
+  }
+
+  /**
+   * Resolve the local controller host from the configured IP or, if enabled, via
+   * a local-network scan. Returns null when no host is available.
+   * @returns {Promise<string|null>}
+   */
+  async resolveLocalHost() {
+    if (this.config.localIp && this.config.localIp.trim()) {
+      return this.config.localIp.trim();
+    }
+    if (this.localHost) {
+      return this.localHost;
+    }
+    if (this.config.autodiscover) {
+      const found = await this.discoverLocalHost();
+      if (found) {
+        this.localHost = found;
+      }
+      return found;
+    }
+    return null;
+  }
+
+  /**
+   * Scan the /24 of every non-internal IPv4 interface for a controller answering
+   * the local ping. Returns the first responder, or null.
+   * @returns {Promise<string|null>}
+   */
+  async discoverLocalHost() {
+    const nets = os.networkInterfaces();
+    const bases = new Set();
+    for (const name of Object.keys(nets)) {
+      for (const net of nets[name] || []) {
+        if (net.family === "IPv4" && !net.internal) {
+          const parts = net.address.split(".");
+          bases.add(parts[0] + "." + parts[1] + "." + parts[2]);
+        }
+      }
+    }
+    if (!bases.size) {
+      return null;
+    }
+    const probe = async (ip) => {
+      try {
+        const res = await this.requestClient({
+          method: "post",
+          url: "http://" + ip + "/commonCommand",
+          timeout: 1000,
+          headers: { "content-type": "application/json", accept: "application/json" },
+          data: { protocolVersion: "1.0", command: "ping", source: 2 },
+        });
+        return res.data && res.data.status === 0 ? ip : null;
+      } catch {
+        return null;
+      }
+    };
+    const CONCURRENCY = 32;
+    for (const base of bases) {
+      const candidates = [];
+      for (let i = 1; i <= 254; i++) {
+        candidates.push(base + "." + i);
+      }
+      for (let start = 0; start < candidates.length; start += CONCURRENCY) {
+        const results = await Promise.all(candidates.slice(start, start + CONCURRENCY).map(probe));
+        const found = results.find((entry) => entry);
+        if (found) {
+          this.log.info("Discovered local controller at " + found);
+          return found;
+        }
+      }
+    }
+    this.log.info("No local controller found via auto-discovery");
+    return null;
+  }
+
+  /**
+   * Instantiate the commonCommand client and build its object tree when the controller
+   * is reachable on the LAN. The client keeps the cloud commonCommand endpoints as a
+   * transport fallback (same id space). Leaves this.cc null otherwise, so onReady falls
+   * back to the legacy cloud tree.
+   */
+  async setupCommonCommand() {
+    const host = await this.resolveLocalHost();
+    // Only enable the cloud transport when the registry holds exactly one controller, so a
+    // multi-controller account cannot route fallback commands to the wrong controller.
+    const serial = this.registryDeviceCount === 1 ? this.webControlId || null : null;
+    if (this.registryDeviceCount > 1) {
+      this.log.info("Multiple controllers in the account, cloud commonCommand fallback disabled (local only)");
+    }
+    const client = new CommonCommandClient({
+      requestClient: this.requestClient,
+      log: this.log,
+      localHost: host,
+      cloudBase: this.commonCommandService,
+      serial: serial,
+      getToken: () => this.aToken,
+      refreshAuth: () => this.refreshToken(),
+    });
+    if (!host || !(await client.pingLocal())) {
+      if (host) {
+        this.log.info("Local controller at " + host + " not reachable, using cloud fallback");
+      }
+      return;
+    }
+    this.cc = client;
+    this.log.info("Local controller reachable at " + host + ", using commonCommand (local preferred)");
+    await this.buildCommonCommandTree();
+  }
+
+  /**
+   * Read the local getConfiguration and create the local.* object tree: one channel per
+   * destination with position/slatAngle/stop states depending on the actions it exposes,
+   * plus status states, and one button per scene. The tree is driven over whichever
+   * commonCommand transport is currently available.
+   */
+  async buildCommonCommandTree() {
+    let config;
+    try {
+      config = await this.cc.getConfiguration();
+    } catch (error) {
+      this.log.error("Local getConfiguration failed: " + (error && error.message));
+      this.cc = null;
+      return;
+    }
+    // Pre-count sanitized names so colliding destinations (e.g. "Blind 1" and "Blind.1"
+    // both sanitize to "Blind1") get a unique object folder instead of overwriting each
+    // other. Only collisions carry the id suffix, so unique names stay readable.
+    const destNameCounts = {};
+    for (const dest of (config && config.destinations) || []) {
+      const sane = this.sanitizeName(dest.names && dest.names[0]);
+      if (sane) {
+        destNameCounts[sane] = (destNameCounts[sane] || 0) + 1;
+      }
+    }
+    this.ccDestinations = [];
+    for (const dest of (config && config.destinations) || []) {
+      const display = (dest.names && dest.names[0]) || "";
+      const sane = this.sanitizeName(display);
+      if (!sane) {
+        continue;
+      }
+      const name = destNameCounts[sane] > 1 ? sane + "_" + dest.id : sane;
+      const actions = dest.actions || [];
+      const percentage = actions.find((entry) => entry.actionType === ACTION_TYPE.PERCENTAGE);
+      const rotation = actions.find((entry) => entry.actionType === ACTION_TYPE.ROTATION);
+      const stop = actions.find((entry) => entry.actionType === ACTION_TYPE.STOP);
+      const mapped = {
+        id: dest.id,
+        name: name,
+        position: percentage ? percentage.id : null,
+        tilt: rotation ? { id: rotation.id, min: rotation.minValue != null ? rotation.minValue : -127, max: rotation.maxValue != null ? rotation.maxValue : 127 } : null,
+        stop: stop ? stop.id : null,
+      };
+      this.ccDestinations.push(mapped);
+      await this.setObjectNotExistsAsync("local." + name, {
+        type: "channel",
+        common: { name: display || name },
+        native: {},
+      });
+      if (mapped.position != null) {
+        await this.setObjectNotExistsAsync("local." + name + ".position", {
+          type: "state",
+          common: { name: "Target position", role: "level.blind", type: "number", unit: "%", min: 0, max: 100, write: true, read: true },
+          native: {},
+        });
+      }
+      if (mapped.tilt) {
+        await this.setObjectNotExistsAsync("local." + name + ".slatAngle", {
+          type: "state",
+          common: { name: "Target slat angle", role: "level.tilt", type: "number", min: mapped.tilt.min, max: mapped.tilt.max, write: true, read: true },
+          native: {},
+        });
+      }
+      if (mapped.stop != null) {
+        await this.setObjectNotExistsAsync("local." + name + ".stop", {
+          type: "state",
+          common: { name: "Stop movement", role: "button", type: "boolean", write: true, read: false },
+          native: {},
+        });
+      }
+      await this.setObjectNotExistsAsync("local." + name + ".drivingCause", {
+        type: "state",
+        // Local reports a numeric code, the cloud fallback a string enum, so accept both.
+        common: { name: "Driving cause", role: "value", type: "mixed", write: false, read: true },
+        native: {},
+      });
+      await this.setObjectNotExistsAsync("local." + name + ".heartbeatError", {
+        type: "state",
+        common: { name: "Heartbeat error", role: "indicator", type: "boolean", write: false, read: true },
+        native: {},
+      });
+      await this.setObjectNotExistsAsync("local." + name + ".blocking", {
+        type: "state",
+        common: { name: "Blocking", role: "indicator", type: "boolean", write: false, read: true },
+        native: {},
+      });
+    }
+    // Same collision guard for scenes as for destinations.
+    const sceneNameCounts = {};
+    for (const scene of (config && config.scenes) || []) {
+      const sane = this.sanitizeName(scene.names && scene.names[0]);
+      if (sane) {
+        sceneNameCounts[sane] = (sceneNameCounts[sane] || 0) + 1;
+      }
+    }
+    this.ccScenes = [];
+    for (const scene of (config && config.scenes) || []) {
+      const display = (scene.names && scene.names[0]) || "";
+      const sane = this.sanitizeName(display);
+      if (!sane) {
+        continue;
+      }
+      const name = sceneNameCounts[sane] > 1 ? sane + "_" + scene.id : sane;
+      this.ccScenes.push({ id: scene.id, name: name });
+      await this.setObjectNotExistsAsync("local.scenes." + name, {
+        type: "state",
+        common: { name: display || name, role: "button", type: "boolean", write: true, read: false },
+        native: {},
+      });
+    }
+    this.log.debug("commonCommand destinations: " + JSON.stringify(this.ccDestinations));
+    this.log.debug("commonCommand scenes: " + JSON.stringify(this.ccScenes));
+  }
+
+  /**
+   * Poll status for every destination and write it into the local.* tree. Uses whichever
+   * commonCommand transport is currently available (local preferred).
+   */
+  async pollCommonCommand() {
+    const ids = this.ccDestinations.map((dest) => dest.id);
+    if (!ids.length) {
+      return;
+    }
+    let details;
+    try {
+      details = await this.cc.getStatus(ids);
+    } catch (error) {
+      this.log.debug("commonCommand status poll failed: " + (error && error.message));
+      this.failedStatusCycles++;
+      if (this.failedStatusCycles >= 3) {
+        this.setState("info.connection", false, true);
+      }
+      return;
+    }
+    this.failedStatusCycles = 0;
+    this.setState("info.connection", true, true);
+    for (const detail of details) {
+      const dest = this.ccDestinations.find((entry) => entry.id === detail.destinationId);
+      if (!dest || !detail.data) {
+        continue;
+      }
+      const data = detail.data;
+      const base = "local." + dest.name;
+      const heartbeat = data.heartBeatError != null ? data.heartBeatError : data.heartbeatError;
+      await this.setStateChangedAsync(base + ".drivingCause", { val: data.drivingCause != null ? data.drivingCause : null, ack: true });
+      await this.setStateChangedAsync(base + ".heartbeatError", { val: !!heartbeat, ack: true });
+      await this.setStateChangedAsync(base + ".blocking", { val: !!data.blocking, ack: true });
+      for (const product of data.productData || []) {
+        const value = product.value || {};
+        if (dest.position != null && product.actionId === dest.position && value.percentage != null) {
+          await this.setStateChangedAsync(base + ".position", { val: Math.round(value.percentage), ack: true });
+        }
+        if (dest.tilt && product.actionId === dest.tilt.id && value.rotation != null) {
+          await this.setStateChangedAsync(base + ".slatAngle", { val: value.rotation, ack: true });
+        }
+      }
+    }
+  }
+
+  /**
+   * One poll cycle: commonCommand mode when a tree was built (local preferred, cloud
+   * fallback), otherwise the legacy cloud status poll.
+   */
+  async pollStatus() {
+    if (this.polling) {
+      // A previous poll is still running (it exceeded the interval); skip this tick so
+      // local status requests cannot overlap and violate the throttle spacing.
+      return;
+    }
+    this.polling = true;
+    try {
+      // Self-heal: when local access is configured but the tree could not be built yet
+      // (controller was down at startup or dropped off the LAN), retry building it.
+      if (!this.cc && this.wantsLocal) {
+        await this.setupCommonCommand();
+      }
+      if (this.cc) {
+        this.ccActive = await this.cc.pingLocal();
+        await this.pollCommonCommand();
+        return;
+      }
+      if (this.aToken) {
+        await this.getDeviceStatus();
+      }
+    } finally {
+      this.polling = false;
+    }
+  }
+
+  /**
+   * Route a write on a local.* state to the commonCommand client.
+   * @param {string} id
+   * @param {string[]} idArray
+   * @param {ioBroker.State} state
+   */
+  async handleCommonCommand(id, idArray, state) {
+    if (!this.cc) {
+      return;
+    }
+    if (idArray[3] === "scenes") {
+      const scene = this.ccScenes.find((entry) => entry.name === idArray[4]);
+      if (scene) {
+        try {
+          await this.cc.executeScene(scene.id);
+        } catch (error) {
+          this.log.error("Scene failed for " + scene.name + ": " + (error && error.message));
+        }
+        this.setState(id, false, true);
+      }
+      return;
+    }
+    const dest = this.ccDestinations.find((entry) => entry.name === idArray[3]);
+    if (!dest) {
+      return;
+    }
+    const command = idArray[idArray.length - 1];
+    const value = Number(state.val);
+    let actionId;
+    let parameters;
+    if (command === "stop" && dest.stop != null) {
+      actionId = dest.stop;
+      parameters = {};
+    } else if (command === "position" && dest.position != null && Number.isFinite(value)) {
+      actionId = dest.position;
+      parameters = { percentage: Math.max(0, Math.min(100, value)) };
+    } else if (command === "slatAngle" && dest.tilt && Number.isFinite(value)) {
+      actionId = dest.tilt.id;
+      parameters = { rotation: Math.max(dest.tilt.min, Math.min(dest.tilt.max, value)) };
+    }
+    if (actionId == null) {
+      return;
+    }
+    let ok = false;
+    try {
+      await this.cc.action([{ destinationId: dest.id, actionId: actionId, parameters: parameters }]);
+      ok = true;
+    } catch (error) {
+      this.log.error("Command failed for " + dest.name + " " + command + ": " + (error && error.message));
+    }
+    if (command === "stop") {
+      this.setState(id, false, true);
+    } else if (ok) {
+      // Acknowledge the value actually sent, not the raw (possibly out-of-range) input.
+      const sent = command === "position" ? parameters.percentage : command === "slatAngle" ? parameters.rotation : state.val;
+      this.setState(id, sent, true);
+    }
+  }
+
   async genericPostMessage(action, parameter, retry = true) {
     if (!this.webControlId) {
       this.log.error("No webcontrol id found");
@@ -719,11 +1265,10 @@ class Wmswebcontrol extends utils.Adapter {
         // next poll cycle recover instead of dumping a full error stack every time.
         const body = error.response && JSON.stringify(error.response.data);
         if (error.response && error.response.status === 400 && body && body.indexOf("4001") !== -1) {
-          this.log.debug("Device not connected to the iot hub (4001)");
+          this.log.debug("Device not connected to the iot hub (4001) for action " + action);
           return;
         }
-        this.log.error(String(error));
-        error.response && this.log.error(JSON.stringify(error.response.data));
+        this.log.error("Request failed for action " + action + ": " + this.formatError(error));
       });
   }
 
@@ -760,6 +1305,7 @@ class Wmswebcontrol extends utils.Adapter {
   onUnload(callback) {
     try {
       this.setState("info.connection", false, true);
+      this.cc && this.cc.stop();
       this.appUpdateInterval && clearInterval(this.appUpdateInterval);
       clearInterval(this.refreshTokenInterval);
       clearTimeout(this.waitTimeout);
@@ -780,11 +1326,54 @@ class Wmswebcontrol extends utils.Adapter {
       const idArray = id.split(".");
       const pre = idArray.slice(0, -1).join(".");
       if (!state.ack) {
+        if (idArray[2] === "local") {
+          await this.handleCommonCommand(id, idArray, state);
+          return;
+        }
+        if (idArray[2] === "scenes") {
+          const scene = this.sceneList.find((entry) => entry.name === idArray[3]);
+          if (scene) {
+            await this.genericPostMessage("executeScene", { sceneNumber: scene.id }, false);
+            this.setState(id, false, true);
+            return;
+          }
+        }
+        if (idArray[2] === "channels") {
+          const channel = this.channelList.find((entry) => entry.name === idArray[3]);
+          if (channel) {
+            const command = idArray[idArray.length - 1];
+            const value = Number(state.val);
+            let parameter;
+            if (command === "stop") {
+              parameter = { channel: channel.id, functionCode: 1 };
+            } else if (command === "position" && Number.isFinite(value)) {
+              const position = Math.max(0, Math.min(100, value)) * 2;
+              parameter = { channel: channel.id, functionCode: 3, setting0: position, setting1: 255, setting2: 255, setting3: 255 };
+            } else if (command === "slatAngle" && Number.isFinite(value)) {
+              const angle = Math.max(-127, Math.min(127, value)) + 127;
+              parameter = { channel: channel.id, functionCode: 3, setting0: 255, setting1: angle, setting2: 255, setting3: 255 };
+            }
+            if (parameter) {
+              const result = await this.genericPostMessage("channelCommandRequest", parameter, false);
+              // Reset the momentary stop button; only acknowledge position/angle once
+              // the command was actually accepted (genericPostMessage resolves the
+              // response on success, undefined on failure).
+              if (command === "stop") {
+                this.setState(id, false, true);
+              } else if (result != null) {
+                this.setState(id, state.val, true);
+              }
+            }
+            return;
+          }
+        }
         if (id.indexOf(".setting") !== -1 && id.indexOf("Convert") === -1) {
           const serialNumber = await this.getStateAsync(pre + ".serialNumber");
-          this.setDeviceStatus({ id: serialNumber.val, name: idArray[2] }, idArray[idArray.length - 1], state.val).catch(() => {
-            this.log.error("set status failed");
-          });
+          if (serialNumber) {
+            this.setDeviceStatus({ id: serialNumber.val, name: idArray[2] }, idArray[idArray.length - 1], state.val).catch(() => {
+              this.log.error("set status failed");
+            });
+          }
         }
         if (id.indexOf(".setting") !== -1 && id.indexOf("Convert") !== -1) {
           const trimmedID = id.replace("Convert", "");
@@ -808,7 +1397,7 @@ class Wmswebcontrol extends utils.Adapter {
           }
         }
       } else {
-        if (id.indexOf(".setting") !== -1 && id.indexOf("Convert") === -1) {
+        if (idArray[2] !== "scenes" && idArray[2] !== "channels" && id.indexOf(".setting") !== -1 && id.indexOf("Convert") === -1) {
           await this.setObjectNotExistsAsync(id + "Convert", {
             type: "state",
             common: {
