@@ -1,7 +1,9 @@
 // Specialized tsconfig for type-checking js files
 {
     "extends": "./tsconfig.json",
-    "compilerOptions": {},
+    "compilerOptions": {
+        "types": ["node", "mocha"]
+    },
     "include": [
         "**/*.js",
         "**/*.d.ts"
@@ -10,6 +12,8 @@
         "**/build",
         "node_modules/",
         "widgets/",
-        "gulpfile.js"
+        "gulpfile.js",
+        ".references/",
+        "**/*_APKPure/"
     ]
 }

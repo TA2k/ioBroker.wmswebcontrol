@@ -254,9 +254,9 @@ class Wmswebcontrol extends utils.Adapter {
       },
       data:
         "Input.Username=" +
-        this.config.user +
+        encodeURIComponent(this.config.user) +
         "&Input.Password=" +
-        this.config.password +
+        encodeURIComponent(this.config.password) +
         "&Input.RememberMe=true&button=login&__RequestVerificationToken=" +
         token +
         "&Input.RememberMe=false",

@@ -9,7 +9,8 @@
   "homepage": "https://github.com/TA2k/ioBroker.wmswebcontrol",
   "license": "MIT",
   "keywords": [
-    "Warema WMS webcontrol pro"
+    "Warema WMS webcontrol pro",
+    "ioBroker"
   ],
   "repository": {
     "type": "git",
@@ -17,27 +18,30 @@
   },
   "dependencies": {
     "@esm2cjs/got": "^13.0.0",
-    "@iobroker/adapter-core": "^3.2.3",
-    "axios": "^1.7.9",
-    "http-cookie-agent": "^6.0.8",
-    "json2iob": "^2.6.16",
-    "qs": "^6.14.0",
-    "tough-cookie": "^5.1.1"
+    "@iobroker/adapter-core": "^3.4.3",
+    "axios": "^1.20.0",
+    "http-cookie-agent": "^8.0.0",
+    "json2iob": "^2.6.26",
+    "qs": "^6.16.0",
+    "tough-cookie": "^6.0.2"
   },
   "devDependencies": {
-    "@alcalzone/release-script": "^3.8.0",
-    "@alcalzone/release-script-plugin-iobroker": "^3.7.2",
-    "@alcalzone/release-script-plugin-license": "^3.7.0",
-    "@alcalzone/release-script-plugin-manual-review": "^3.7.0",
-    "@eslint/eslintrc": "^3.2.0",
-    "@eslint/js": "^9.20.0",
-    "@iobroker/testing": "^5.0.3",
-    "@types/node": "^22.13.1",
-    "eslint": "^9.20.0",
-    "globals": "^15.14.0",
-    "typescript": "^5.7.3"
+    "@alcalzone/release-script": "^5.2.1",
+    "@alcalzone/release-script-plugin-iobroker": "^5.2.0",
+    "@alcalzone/release-script-plugin-license": "^5.2.2",
+    "@alcalzone/release-script-plugin-manual-review": "^5.2.0",
+    "@eslint/eslintrc": "^3.3.7",
+    "@eslint/js": "^10.0.1",
+    "@iobroker/testing": "^6.2.2",
+    "@types/node": "^22.20.4",
+    "eslint": "^10.11.0",
+    "globals": "^17.12.0",
+    "typescript": "^7.0.2"
   },
   "main": "main.js",
+  "engines": {
+    "node": ">=22"
+  },
   "scripts": {
     "test:js": "mocha --config test/mocharc.custom.json \"{!(node_modules|test)/**/*.test.js,*.test.js,test/**/test!(PackageFiles|Startup).js}\"",
     "test:package": "mocha test/package --exit",

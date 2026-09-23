@@ -2,7 +2,6 @@
   "common": {
     "name": "wmswebcontrol",
     "version": "0.1.4",
-    "title": "Warema WMS Webcontrol Pro",
     "news": {
       "0.1.4": {
         "en": "ignore certificate errors",
@@ -22,9 +21,9 @@
         "de": "zurück zur übersicht",
         "ru": "исправить логин",
         "pt": "corrigir login",
-        "nl": "fix login",
+        "nl": "inloggen herstellen",
         "fr": "correction de la connexion",
-        "it": "fix login",
+        "it": "correzione del login",
         "es": "corrección de inicio",
         "pl": "naprawić logowanie",
         "uk": "фіксувати логін",
@@ -32,21 +31,55 @@
       },
       "0.1.2": {
         "en": "Fix for no response crash",
-        "de": "Fix für Absturz bei fehlender Response"
+        "de": "Fix für Absturz bei fehlender Response",
+        "ru": "Исправление сбоя при отсутствии ответа",
+        "pt": "Correção para falha sem resposta",
+        "nl": "Fix voor crash bij ontbrekend antwoord",
+        "fr": "Correction du plantage en l'absence de réponse",
+        "it": "Correzione per il crash in assenza di risposta",
+        "es": "Corrección del fallo por falta de respuesta",
+        "pl": "Poprawka awarii przy braku odpowiedzi",
+        "uk": "Виправлення збою за відсутності відповіді",
+        "zh-cn": "修复无响应崩溃问题"
       },
       "0.1.1": {
         "en": "Fix for 0 Values",
-        "de": "Fix für 0 Werte"
+        "de": "Fix für 0 Werte",
+        "ru": "Исправление для нулевых значений",
+        "pt": "Correção para valores 0",
+        "nl": "Fix voor 0-waarden",
+        "fr": "Correction pour les valeurs 0",
+        "it": "Correzione per i valori 0",
+        "es": "Corrección para valores 0",
+        "pl": "Poprawka dla wartości 0",
+        "uk": "Виправлення для нульових значень",
+        "zh-cn": "修复 0 值问题"
       },
       "0.1.0": {
         "en": "Fix Device Receiving",
-        "de": "Fix Device Receiving"
-      },
-      "0.0.7": {
-        "en": "Bugfixes"
+        "de": "Geräteempfang korrigiert",
+        "ru": "Исправление приёма устройств",
+        "pt": "Correção da recepção de dispositivos",
+        "nl": "Ontvangst van apparaten hersteld",
+        "fr": "Correction de la réception des appareils",
+        "it": "Correzione della ricezione dei dispositivi",
+        "es": "Corrección de la recepción de dispositivos",
+        "pl": "Poprawka odbioru urządzeń",
+        "uk": "Виправлення прийому пристроїв",
+        "zh-cn": "修复设备接收问题"
       },
       "0.0.5": {
-        "en": "Bugfixes"
+        "en": "Bugfixes",
+        "de": "Fehlerbehebungen",
+        "ru": "Исправление ошибок",
+        "pt": "Correções de erros",
+        "nl": "Bugfixes",
+        "fr": "Corrections de bugs",
+        "it": "Correzioni di bug",
+        "es": "Corrección de errores",
+        "pl": "Poprawki błędów",
+        "uk": "Виправлення помилок",
+        "zh-cn": "错误修复"
       }
     },
     "titleLang": {
@@ -59,6 +92,7 @@
       "it": "Warema WMS Webcontrol Pro",
       "es": "Webcontrol de Warema WMS",
       "pl": "Warema WMS Webcontrol Pro",
+      "uk": "Warema WMS Webcontrol Pro",
       "zh-cn": "Warema WMS Webcontrol Pro"
     },
     "desc": {
@@ -71,6 +105,7 @@
       "it": "Adattatore per Warema WMS Webcontrol Pro",
       "es": "Adaptador para Warema WMS Webcontrol Pro",
       "pl": "Adapter do Warema WMS Webcontrol Pro",
+      "uk": "Адаптер для Warema WMS Webcontrol Pro",
       "zh-cn": "Warema WMS Webcontrol Pro适配器"
     },
     "authors": [
@@ -79,7 +114,11 @@
     "keywords": [
       "Warema WMS Webcontrol Pro"
     ],
-    "license": "MIT",
+    "licenseInformation": {
+      "license": "MIT",
+      "type": "free"
+    },
+    "tier": 3,
     "platform": "Javascript/Node.js",
     "icon": "wmswebcontrol.png",
     "enabled": true,
@@ -91,7 +130,9 @@
     "compact": true,
     "connectionType": "cloud",
     "dataSource": "poll",
-    "materialize": true,
+    "adminUI": {
+      "config": "materialize"
+    },
     "plugins": {
       "sentry": {
         "dsn": "https://adfef807515a4d6a8812f0f7cd28f70f@sentry.iobroker.net/159"
@@ -99,12 +140,12 @@
     },
     "dependencies": [
       {
-        "js-controller": ">=3.0.0"
+        "js-controller": ">=6.0.11"
       }
     ],
     "globalDependencies": [
       {
-        "admin": ">=4.0.9"
+        "admin": ">=7.6.20"
       }
     ]
   },

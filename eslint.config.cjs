@@ -12,7 +12,13 @@ const compat = new FlatCompat({
 });
 
 module.exports = [{
-  ignores: ["**/.prettierrc.js", "**/.eslintrc.js"],
+  ignores: [
+    "**/.prettierrc.js",
+    "**/.eslintrc.js",
+    ".references/**",
+    "**/*_APKPure/**",
+    ".dev-server/**",
+  ],
 }, ...compat.extends("eslint:recommended"), {
   plugins: {},
 
