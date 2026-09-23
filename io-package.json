@@ -191,7 +191,7 @@
     "password": "",
     "interval": 5,
     "localIp": "",
-    "autodiscover": false
+    "autodiscover": true
   },
   "objects": [],
   "instanceObjects": [

@@ -110,6 +110,9 @@ class Wmswebcontrol extends utils.Adapter {
     // Set in onUnload so an async setup that started before shutdown does not publish a
     // client or object tree after the adapter has been told to stop.
     this.unloaded = false;
+    // Guards a background LAN scan and against overlapping commonCommand setups.
+    this.discovering = false;
+    this.settingUp = false;
     this.states = {
       textIndexDrivingCause: {
         498: "Heartbeat Sicherheitskontakt",
@@ -272,6 +275,10 @@ class Wmswebcontrol extends utils.Adapter {
       await this.getSceneList();
       await this.getChannelList();
     }
+    // When no IP is configured, kick off the LAN scan in the background so a full /24 scan
+    // never delays startup; it builds and publishes the local tree once the controller is
+    // found. Not awaited on purpose.
+    void this.maybeDiscoverLocal();
 
     if (!this.unloaded && (this.aToken || this.cc || this.wantsLocal)) {
       await this.sleep(5000);
@@ -886,25 +893,17 @@ class Wmswebcontrol extends utils.Adapter {
   }
 
   /**
-   * Resolve the local controller host from the configured IP or, if enabled, via
-   * a local-network scan. Returns null when no host is available.
+   * Resolve the local controller host from the configured IP or a previously discovered
+   * (cached) host. Returns null when no host is available yet.
    * @returns {Promise<string|null>}
    */
   async resolveLocalHost() {
     if (this.config.localIp && this.config.localIp.trim()) {
       return this.config.localIp.trim();
     }
-    if (this.localHost) {
-      return this.localHost;
-    }
-    if (this.config.autodiscover) {
-      const found = await this.discoverLocalHost();
-      if (found) {
-        this.localHost = found;
-      }
-      return found;
-    }
-    return null;
+    // A discovered host is cached here; the LAN scan itself runs in the background
+    // (maybeDiscoverLocal) so it never blocks startup or the poll loop.
+    return this.localHost;
   }
 
   /**
@@ -947,6 +946,9 @@ class Wmswebcontrol extends utils.Adapter {
         candidates.push(base + "." + i);
       }
       for (let start = 0; start < candidates.length; start += CONCURRENCY) {
+        if (this.unloaded) {
+          return null;
+        }
         const results = await Promise.all(candidates.slice(start, start + CONCURRENCY).map(probe));
         const found = results.find((entry) => entry);
         if (found) {
@@ -960,12 +962,54 @@ class Wmswebcontrol extends utils.Adapter {
   }
 
   /**
+   * Run the LAN scan in the background when local is wanted but no host is resolved yet, so
+   * a full /24 scan never delays startup. On success the host is cached and the local tree
+   * is built. Guarded so only one scan runs and it is skipped once local is already active,
+   * an IP is configured, or a host is already cached.
+   * @returns {Promise<void>}
+   */
+  async maybeDiscoverLocal() {
+    if (this.cc || this.discovering || !this.config.autodiscover) {
+      return;
+    }
+    if ((this.config.localIp && this.config.localIp.trim()) || this.localHost) {
+      return;
+    }
+    this.discovering = true;
+    try {
+      const found = await this.discoverLocalHost();
+      if (found && !this.unloaded) {
+        this.localHost = found;
+        await this.setupCommonCommand();
+      }
+    } catch (error) {
+      this.log.debug("Background discovery failed: " + (error && error.message));
+    } finally {
+      this.discovering = false;
+    }
+  }
+
+  /**
    * Instantiate the commonCommand client and build its object tree when the controller
    * is reachable on the LAN. The client keeps the cloud commonCommand endpoints as a
    * transport fallback (same id space). Leaves this.cc null otherwise, so onReady falls
    * back to the legacy cloud tree.
    */
   async setupCommonCommand() {
+    // A background discovery and the poll self-heal can both trigger setup; guard against
+    // building the tree twice concurrently.
+    if (this.settingUp) {
+      return;
+    }
+    this.settingUp = true;
+    try {
+      await this.setupCommonCommandInner();
+    } finally {
+      this.settingUp = false;
+    }
+  }
+
+  async setupCommonCommandInner() {
     const host = await this.resolveLocalHost();
     // Only enable the cloud transport when the registry holds exactly one controller, so a
     // multi-controller account cannot route fallback commands to the wrong controller.
@@ -1050,7 +1094,8 @@ class Wmswebcontrol extends utils.Adapter {
         clampMin = 0;
         clampMax = 100;
         const dimmer = desc === ACTION_DESC.LIGHT_DIMMING || desc === ACTION_DESC.LOAD_DIMMING;
-        common = { name: "Target position", role: dimmer ? "level.dimmer" : "level.blind", type: "number", unit: "%", min: 0, max: 100, write: true, read: true };
+        const label = dimmer ? "Brightness" : desc === ACTION_DESC.VALANCE_DRIVE ? "Valance position" : "Target position";
+        common = { name: label, role: dimmer ? "level.dimmer" : "level.blind", type: "number", unit: "%", min: 0, max: 100, write: true, read: true };
         break;
       }
       case ACTION_TYPE.PERCENTAGE_DELTA: {
@@ -1183,6 +1228,14 @@ class Wmswebcontrol extends utils.Adapter {
       // Adapter is shutting down; do not create objects.
       return false;
     }
+    // Labeled parent for the whole local tree, so the folder is not shown unnamed.
+    if (!(await this.ccSetObject("local", {
+      type: "folder",
+      common: { name: { en: "Local control (commonCommand)", de: "Lokale Steuerung (commonCommand)" } },
+      native: {},
+    }))) {
+      return false;
+    }
     // Collect destination descriptors first so folder names can be assigned across all
     // destinations at once (order-independent), before any object is created.
     const destInputs = /** @type {{id: number, display: string, base: string, actions: NonNullable<ReturnType<Wmswebcontrol["describeAction"]>>[]}[]} */ ([]);
@@ -1269,6 +1322,13 @@ class Wmswebcontrol extends utils.Adapter {
     const usedSceneNames = new Set();
     const sceneNames = this.assignUniqueNames(sceneInputs, usedSceneNames);
     const scenes = [];
+    if (sceneInputs.length && !(await this.ccSetObject("local.scenes", {
+      type: "folder",
+      common: { name: { en: "Scenes", de: "Szenen" } },
+      native: {},
+    }))) {
+      return false;
+    }
     for (let i = 0; i < sceneInputs.length; i++) {
       const input = sceneInputs[i];
       const name = sceneNames[i];
