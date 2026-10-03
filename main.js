@@ -1324,7 +1324,7 @@ class Wmswebcontrol extends utils.Adapter {
       const name = destNames[i];
       // Reserve the fixed status state names, then assign one order-independent state name
       // per action on this destination.
-      const usedStates = new Set(["drivingCause", "heartbeatError", "blocking"]);
+      const usedStates = new Set(["drivingCause", "heartbeatError", "blocking", "connected"]);
       const stateNames = this.assignUniqueNames(input.actions, usedStates);
       for (let j = 0; j < input.actions.length; j++) {
         input.actions[j].stateName = stateNames[j];
@@ -1365,6 +1365,15 @@ class Wmswebcontrol extends utils.Adapter {
       if (!(await this.ccSetObject("local." + name + ".blocking", {
         type: "state",
         common: { name: "Blocking", role: "indicator", type: "boolean", write: false, read: true },
+        native: {},
+      }))) {
+        return false;
+      }
+      if (!(await this.ccSetObject("local." + name + ".connected", {
+        type: "state",
+        // Derived reachability: false when the device reports a heartbeat error, is blocking,
+        // or returns no status at all (asleep or out of radio range).
+        common: { name: "Connected", role: "indicator.reachable", type: "boolean", write: false, read: true },
         native: {},
       }))) {
         return false;
@@ -1413,6 +1422,7 @@ class Wmswebcontrol extends utils.Adapter {
       keep.add("local." + dest.name + ".drivingCause");
       keep.add("local." + dest.name + ".heartbeatError");
       keep.add("local." + dest.name + ".blocking");
+      keep.add("local." + dest.name + ".connected");
       for (const meta of dest.actions) {
         keep.add("local." + dest.name + "." + meta.stateName);
       }
@@ -1492,6 +1502,10 @@ class Wmswebcontrol extends utils.Adapter {
       if (this.failedStatusCycles >= 3) {
         this.setState("info.connection", false, true);
       }
+      // The controller answered nothing, so no device is reachable this cycle.
+      for (const dest of this.ccDestinations) {
+        await this.setStateChangedAsync("local." + dest.name + ".connected", { val: false, ack: true });
+      }
       return;
     }
     this.failedStatusCycles = 0;
@@ -1509,6 +1523,7 @@ class Wmswebcontrol extends utils.Adapter {
       await this.setStateChangedAsync(base + ".drivingCause", { val: data.drivingCause != null ? data.drivingCause : null, ack: true });
       await this.setStateChangedAsync(base + ".heartbeatError", { val: !!heartbeat, ack: true });
       await this.setStateChangedAsync(base + ".blocking", { val: !!data.blocking, ack: true });
+      await this.setStateChangedAsync(base + ".connected", { val: !(heartbeat || data.blocking), ack: true });
       for (const product of data.productData || []) {
         const value = product.value || {};
         const meta = dest.actions.find((entry) => entry.id === product.actionId && entry.readKey);
@@ -1529,6 +1544,12 @@ class Wmswebcontrol extends utils.Adapter {
       }
     }
     const missing = this.ccDestinations.filter((dest) => !updated.has(dest.id)).map((dest) => dest.name);
+    for (const dest of this.ccDestinations) {
+      if (!updated.has(dest.id)) {
+        // No status answered this cycle: the actuator is asleep or out of radio range.
+        await this.setStateChangedAsync("local." + dest.name + ".connected", { val: false, ack: true });
+      }
+    }
     if (missing.length) {
       // The controller answered the poll but returned no data for these destinations
       // (e.g. an actuator that is asleep or out of radio range reports a status error).

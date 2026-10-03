@@ -50,6 +50,8 @@ Every controllable action of a device is exposed as its own state:
 - `local.<device>.stop` - button, stops the current movement (writable).
 - `local.<device>.identify` - button, identifies the device (writable).
 - `local.<device>.drivingCause` / `.heartbeatError` / `.blocking` - status (read-only).
+- `local.<device>.connected` - reachability (read-only): false on a heartbeat error, while
+  blocking, or when the device returns no status (asleep or out of radio range).
 - `local.scenes.<scene>` - button, runs the scene (writable).
 
 The exact set of states per device depends on the actions the controller reports for it.
