@@ -1,8 +1,21 @@
 {
   "common": {
     "name": "wmswebcontrol",
-    "version": "1.0.0",
+    "version": "1.0.1",
     "news": {
+      "1.0.1": {
+        "en": "Retry transient local status errors so intermittently reachable devices (e.g. awnings) report their state far more reliably, and expose a per-device local.<device>.connected state.",
+        "de": "Transiente lokale Statusfehler werden wiederholt, sodass zeitweise erreichbare Geräte (z. B. Markisen) ihren Zustand deutlich zuverlässiger melden; zusätzlich ein neuer Status local.<device>.connected je Gerät.",
+        "ru": "Повтор временных ошибок локального статуса: периодически доступные устройства (например, маркизы) надёжнее сообщают состояние; добавлено состояние local.<device>.connected для каждого устройства.",
+        "pt": "Repete erros transitórios de status local para que dispositivos intermitentes (p. ex. toldos) reportem o estado de forma muito mais fiável; novo estado local.<device>.connected por dispositivo.",
+        "nl": "Herhaalt tijdelijke lokale statusfouten zodat soms bereikbare apparaten (bijv. zonneschermen) hun status veel betrouwbaarder melden; nieuwe status local.<device>.connected per apparaat.",
+        "fr": "Réessaie les erreurs d'état local transitoires afin que les appareils intermittents (p. ex. stores) remontent leur état de façon bien plus fiable; nouvel état local.<device>.connected par appareil.",
+        "it": "Riprova gli errori di stato locale transitori così i dispositivi intermittenti (es. tende da sole) riportano lo stato in modo molto più affidabile; nuovo stato local.<device>.connected per dispositivo.",
+        "es": "Reintenta errores transitorios de estado local para que los dispositivos intermitentes (p. ej. toldos) informen su estado de forma mucho más fiable; nuevo estado local.<device>.connected por dispositivo.",
+        "pl": "Ponawia przejściowe błędy statusu lokalnego, dzięki czemu urządzenia o zmiennej dostępności (np. markizy) znacznie pewniej raportują stan; nowy stan local.<device>.connected na urządzenie.",
+        "uk": "Повторює тимчасові помилки локального статусу, тож пристрої з періодичною доступністю (напр. маркізи) надійніше повідомляють стан; новий стан local.<device>.connected для кожного пристрою.",
+        "zh-cn": "重试瞬时的本地状态错误，使间歇可达的设备（如遮阳篷）更可靠地上报状态；并为每个设备新增 local.<device>.connected 状态。"
+      },
       "1.0.0": {
         "en": "New local mode: control the WMS controller directly on the LAN (IP or auto-discovery), preferred over the cloud with a cloud fallback. The local path is more stable because it does not depend on the Warema IoT hub.",
         "de": "Neuer lokaler Modus: Steuerung des WMS-Controllers direkt im LAN (IP oder Auto-Discovery), bevorzugt vor der Cloud mit Cloud-Fallback. Der lokale Weg ist stabiler, weil er nicht vom Warema-IoT-Hub abhängt.",

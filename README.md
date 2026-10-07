@@ -69,6 +69,15 @@ and channels. To control a channel change the `*Convert` values, e.g.:
 
 ## Changelog
 
+### 1.0.1 (2026-10-07)
+
+- retry transient local status errors (0x50005/0x50004) up to three times so
+  intermittently reachable devices (e.g. awnings) report their state far more reliably
+- add a per-device `local.<device>.connected` state (false on a heartbeat error, while
+  blocking, or when the device returns no status)
+- log local command sends, confirmations and ignored writes; retry idempotent commands
+- log the local discovery retry cadence
+
 ### 1.0.0 (2026-09-23)
 
 - add local commonCommand control (IP or auto-discovery), preferred over the cloud with a
